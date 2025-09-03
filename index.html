@@ -262,7 +262,7 @@
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 overflow-hidden">
 
     <!-- App Root -->
-    <div id="app" class="h-screen w-screen">
+    <div id="app" class="h-screen w-screen" style="visibility: hidden;">
 
         <!-- Lock Screen / Setup Screen -->
         <div id="lock-screen"
@@ -1156,6 +1156,7 @@
                 searchTerm: '',
                 activePasswordInput: null,
                 autoLogoutMinutes: 1,
+                autoLockOnRefresh: true,
             };
 
             const categories = {
@@ -1333,6 +1334,10 @@
                     renderDetailsPane();
                     updateAutoLockFooter();
                     updateResponsiveLayout();
+                    // Persist current view so refresh can restore it when auto-lock on refresh is off
+                    saveViewState();
+                    // Ensure inactivity timer is running after any render while unlocked
+                    resetAutoLogoutTimer();
                 }
             };
 
@@ -1415,6 +1420,7 @@
                         state.selectedItemId = null;
                         state.searchTerm = '';
                         searchBar.value = '';
+                        saveViewState();
                         render();
                     };
                     categoryNav.appendChild(button);
@@ -1963,6 +1969,16 @@
                                             </div>
                                         </div>
                                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">You can't set both a preset and a custom value.</p>
+                                        <!-- Auto-lock on Refresh Toggle -->
+                                        <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-600">
+                                            <label class="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div class="text-sm font-medium">Auto-lock on refresh</div>
+                                                    <div class="text-xs text-gray-500 dark:text-gray-400">If enabled, the vault will require unlocking again after a page reload.</div>
+                                                </div>
+                                                <input id="auto-lock-on-refresh" type="checkbox" class="h-5 w-5 accent-[var(--primary-600)]">
+                                            </label>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -2074,6 +2090,7 @@
                 // Initialize and bind auto-logout controls
                 const presetBtns = Array.from(detailsPane.querySelectorAll('.auto-logout-preset'));
                 const customInput = detailsPane.querySelector('#auto-logout-custom');
+                const refreshToggle = detailsPane.querySelector('#auto-lock-on-refresh');
 
                 // Load from saved value if present, otherwise default to 1 minute
                 const savedAuto = (state.decryptedData?.user?.autoLogoutMinutes);
@@ -2082,6 +2099,27 @@
                 } else {
                     // Default to 1 minute if no saved value
                     state.autoLogoutMinutes = 1;
+                }
+
+                // Initialize refresh toggle from saved value (default true)
+                if (refreshToggle) {
+                    const savedToggle = state.decryptedData?.user?.autoLockOnRefresh;
+                    state.autoLockOnRefresh = (typeof savedToggle === 'boolean') ? savedToggle : true;
+                    refreshToggle.checked = !!state.autoLockOnRefresh;
+                    refreshToggle.addEventListener('change', (e) => {
+                        state.autoLockOnRefresh = !!e.target.checked;
+                        if (!state.decryptedData.user) state.decryptedData.user = {};
+                        state.decryptedData.user.autoLockOnRefresh = state.autoLockOnRefresh;
+                        saveData();
+                        try {
+                            localStorage.setItem('autoLockOnRefresh', String(state.autoLockOnRefresh));
+                            if (!state.autoLockOnRefresh && state.masterPassword) {
+                                sessionStorage.setItem('sessionMasterPassword', state.masterPassword);
+                            } else {
+                                sessionStorage.removeItem('sessionMasterPassword');
+                            }
+                        } catch (_) {}
+                    });
                 }
 
                 const applySelectionUI = () => {
@@ -2976,6 +3014,19 @@
                 }
             };
 
+            // Persist minimal UI view state for session-based restore
+            const saveViewState = () => {
+                if (state.isLocked) return;
+                try {
+                    const view = {
+                        currentCategory: state.currentCategory,
+                        selectedItemId: state.selectedItemId,
+                        searchTerm: state.searchTerm,
+                    };
+                    sessionStorage.setItem('uiViewState', JSON.stringify(view));
+                } catch (_) { /* no-op */ }
+            };
+
             // --- EVENT HANDLERS ---
             // Global Search behavior
             const openGlobalSearch = () => {
@@ -3093,6 +3144,7 @@
                 const q = globalSearchInput?.value || '';
                 state.searchTerm = q;
                 if (searchBar) searchBar.value = q;
+                saveViewState();
                 render();
 
                 // After render, flash highlight the category button and item card
@@ -3184,6 +3236,43 @@
                             state.decryptedData.user.autoLogoutMinutes = 1;
                             saveData();
                         }
+                        // Load auto lock on refresh toggle (default true)
+                        if (typeof state.decryptedData?.user?.autoLockOnRefresh === 'boolean') {
+                            state.autoLockOnRefresh = state.decryptedData.user.autoLockOnRefresh;
+                        } else {
+                            if (!state.decryptedData.user) state.decryptedData.user = {};
+                            state.decryptedData.user.autoLockOnRefresh = true;
+                            state.autoLockOnRefresh = true;
+                            saveData();
+                        }
+                        // Persist plain preference and session password for refresh behavior
+                        try {
+                            localStorage.setItem('autoLockOnRefresh', String(state.autoLockOnRefresh));
+                            if (!state.autoLockOnRefresh) {
+                                sessionStorage.setItem('sessionMasterPassword', password);
+                            } else {
+                                sessionStorage.removeItem('sessionMasterPassword');
+                            }
+                        } catch (_) {}
+                        // Restore last session view (category/item/search) so post-unlock returns to same screen
+                        try {
+                            const raw = sessionStorage.getItem('uiViewState');
+                            if (raw) {
+                                const view = JSON.parse(raw);
+                                if (view && typeof view === 'object') {
+                                    if (view.currentCategory && categories[view.currentCategory]) {
+                                        state.currentCategory = view.currentCategory;
+                                    }
+                                    if (view.selectedItemId) {
+                                        state.selectedItemId = view.selectedItemId;
+                                    }
+                                    if (typeof view.searchTerm === 'string') {
+                                        state.searchTerm = view.searchTerm;
+                                        if (searchBar) searchBar.value = state.searchTerm || '';
+                                    }
+                                }
+                            }
+                        } catch (_) {}
             // One-time onboarding redirect to Profile if not completed before
                         try {
                             if (!state.decryptedData.user) state.decryptedData.user = {};
@@ -3221,6 +3310,7 @@
                             securityQuestion: '',
                             securityAnswer: '',
                             autoLogoutMinutes: 1,
+                            autoLockOnRefresh: true,
                             onboardingCompleted: false,
                             profilePromptShown: false
                         }, 
@@ -3232,6 +3322,11 @@
                     state.masterPassword = password;
                     state.isLocked = false;
                     state.autoLogoutMinutes = 1;
+                    // Persist default refresh preference and session password (default true => do not persist)
+                    try {
+                        localStorage.setItem('autoLockOnRefresh', 'true');
+                        sessionStorage.removeItem('sessionMasterPassword');
+                    } catch (_) {}
                     // Redirect to Profile on first onboarding only in this initial session
                     state.currentCategory = 'profile';
                     // Mark onboarding completed (banner will show once on first profile render)
@@ -3252,6 +3347,7 @@
 
             addNewItemBtn.addEventListener('click', () => {
                 state.selectedItemId = 'new';
+                saveViewState();
                 renderDetailsPane();
             });
 
@@ -3259,6 +3355,7 @@
                 const card = e.target.closest('.item-card');
                 if (card) {
                     state.selectedItemId = card.dataset.id;
+                    saveViewState();
                     renderItemList(); // re-render list for active state
                     renderDetailsPane();
                 }
@@ -3461,6 +3558,7 @@
 
             searchBar.addEventListener('input', (e) => {
                 state.searchTerm = e.target.value;
+                saveViewState();
                 renderItemList();
             });
 
@@ -4061,6 +4159,7 @@
                 if (searchBar) {
                     searchBar.addEventListener('input', (e) => {
                         state.searchTerm = e.target.value;
+                        saveViewState();
                         renderItemList();
                     });
                 }
@@ -4136,6 +4235,45 @@
 
             // --- INITIALIZATION ---
             const init = () => {
+                // Attempt auto-unlock for this session if allowed
+                try {
+                    const pref = localStorage.getItem('autoLockOnRefresh');
+                    // interpret: checked => 'true' => lock on refresh; unchecked => 'false' => auto-unlock
+                    const lockOnRefresh = (pref === null) ? true : (pref === 'true');
+                    const sessionPw = sessionStorage.getItem('sessionMasterPassword');
+                    const encryptedData = localStorage.getItem('vaultData');
+                    if (!lockOnRefresh && sessionPw && encryptedData) {
+                        const decrypted = decrypt(encryptedData, sessionPw);
+                        if (decrypted) {
+                            state.decryptedData = decrypted;
+                            state.masterPassword = sessionPw;
+                            state.isLocked = false;
+                            // Restore view state for this session, if available
+                            try {
+                                const raw = sessionStorage.getItem('uiViewState');
+                                if (raw) {
+                                    const view = JSON.parse(raw);
+                                    if (view && typeof view === 'object') {
+                                        if (view.currentCategory && categories[view.currentCategory]) {
+                                            state.currentCategory = view.currentCategory;
+                                        }
+                                        if (view.selectedItemId) {
+                                            state.selectedItemId = view.selectedItemId;
+                                        }
+                                        if (typeof view.searchTerm === 'string') {
+                                            state.searchTerm = view.searchTerm;
+                                        }
+                                        if (searchBar) searchBar.value = state.searchTerm || '';
+                                    }
+                                }
+                            } catch (_) { /* ignore malformed state */ }
+                        }
+                    } else if (lockOnRefresh) {
+                        // Ensure no residual session key remains
+                        sessionStorage.removeItem('sessionMasterPassword');
+                    }
+                } catch (_) {}
+
                 render();
                 updateAutoLockFooter();
 
@@ -4149,6 +4287,12 @@
                         }
                     }, { passive: true });
                 });
+
+                // No beforeunload mutation; startup logic decides lock/unlock to prevent flicker
+
+                // Reveal the app after initial state decided
+                const appRoot = document.getElementById('app');
+                if (appRoot) appRoot.style.visibility = '';
             };
 
             init();
