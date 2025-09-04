@@ -19,6 +19,9 @@ let state = {
   showFavorites: false,
   viewState: {},
   lockedDueToInactivity: false,
+  // Indicates the vault was previously unlocked and a page refresh caused relock
+  lockedDueToRefresh: false,
+  lockedDueToManual: false,
 };
 
 // Categories configuration
@@ -214,6 +217,14 @@ function resetAutoLogoutTimer() {
       state.decryptedData = null;
       state.selectedItemId = null;
       state.lockedDueToInactivity = true;
+      state.lockedDueToRefresh = false;
+      try {
+        localStorage.removeItem("vaultWasUnlocked");
+      } catch (_) {}
+      state.lockedDueToManual = false;
+      try {
+        localStorage.setItem("vaultLockReason", "inactivity");
+      } catch (_) {}
       render();
     }, AUTO_LOGOUT_DELAY);
   }
@@ -1020,6 +1031,23 @@ function setupLockScreen() {
   });
 
   state.hasVault = hasVaultData;
+  // Reset flags then derive from persisted reason
+  state.lockedDueToInactivity = false;
+  state.lockedDueToRefresh = false;
+  state.lockedDueToManual = false;
+  if (hasVaultData) {
+    const lockReason = localStorage.getItem("vaultLockReason");
+    if (lockReason === "inactivity") state.lockedDueToInactivity = true;
+    else if (lockReason === "manual") state.lockedDueToManual = true;
+    else if (lockReason === "refresh") state.lockedDueToRefresh = true;
+    else if (localStorage.getItem("vaultWasUnlocked") === "1") {
+      // No explicit reason stored but vault was previously unlocked => refresh
+      state.lockedDueToRefresh = true;
+      try {
+        localStorage.setItem("vaultLockReason", "refresh");
+      } catch (_) {}
+    }
+  }
   domElements.masterPassword.value = "";
   if (domElements.confirmMasterPassword)
     domElements.confirmMasterPassword.value = "";
@@ -1073,14 +1101,26 @@ function setupLockScreen() {
       banner.className = "mt-3 px-3 py-2 rounded-md text-sm border";
       formEl.parentElement.appendChild(banner);
     }
-    if (state.lockedDueToInactivity) {
+    if (
+      state.lockedDueToInactivity ||
+      state.lockedDueToRefresh ||
+      state.lockedDueToManual
+    ) {
       const isDark = document.documentElement.classList.contains("dark");
       const bg = isDark ? "bg-primary-700" : "bg-primary-600";
       const border = isDark ? "border-primary-600" : "border-primary-500";
       const text = "text-white";
       banner.className = `mt-3 px-3 py-2 rounded-md text-sm border text-center ${bg} ${border} ${text}`;
-      banner.textContent =
-        "Locked due to inactivity. Enter your master password to continue.";
+      if (state.lockedDueToInactivity) {
+        banner.textContent =
+          "Locked due to inactivity. Enter your master password to continue.";
+      } else if (state.lockedDueToManual) {
+        banner.textContent =
+          "Locked because manual lock was chosen. Enter your master password to continue.";
+      } else if (state.lockedDueToRefresh) {
+        banner.textContent =
+          "Locked because the site was refreshed. Enter your master password to continue.";
+      }
       banner.style.display = "block";
     } else {
       banner.style.display = "none";
@@ -2625,6 +2665,11 @@ function setupEventListeners() {
     state.decryptedData = null;
     state.selectedItemId = null;
     state.lockedDueToInactivity = false; // manual lock should not show inactivity banner
+    state.lockedDueToRefresh = false; // nor refresh banner
+    state.lockedDueToManual = true;
+    try {
+      localStorage.setItem("vaultLockReason", "manual");
+    } catch (_) {}
     render();
   });
 
@@ -2899,6 +2944,13 @@ function handleMasterPasswordSubmit(e) {
       state.decryptedData = decryptedData;
       state.isLocked = false;
       state.lockedDueToInactivity = false;
+      state.lockedDueToRefresh = false;
+      state.lockedDueToManual = false;
+      // Mark that vault was unlocked this session (so a hard refresh can show banner)
+      try {
+        localStorage.setItem("vaultWasUnlocked", "1");
+        localStorage.removeItem("vaultLockReason");
+      } catch (_) {}
       loadViewState();
       render();
       showToast("Vault unlocked successfully!", "success");
@@ -2927,6 +2979,12 @@ function handleMasterPasswordSubmit(e) {
     state.decryptedData.user.name = userName;
     state.isLocked = false;
     state.lockedDueToInactivity = false;
+    state.lockedDueToRefresh = false;
+    state.lockedDueToManual = false;
+    try {
+      localStorage.setItem("vaultWasUnlocked", "1");
+      localStorage.removeItem("vaultLockReason");
+    } catch (_) {}
 
     saveData();
     render();
