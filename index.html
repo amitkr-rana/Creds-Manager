@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline Credentials Manager</title>
+
+  <!-- Favicon placeholder; color will be updated by app.js -->
+  <link id="app-favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236366F1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E" />
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class' };
+  </script>
+
+  <!-- Early theme application to prevent FOUC -->
+  <script>
+    (function () {
+      const savedTheme = localStorage.getItem('theme') || 'auto';
+      const root = document.documentElement;
+      if (savedTheme === 'dark') root.classList.add('dark');
+      else if (savedTheme === 'auto') {
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          root.classList.add('dark');
+        }
+      }
+    })();
+  </script>
+
+  <!-- Crypto.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- App styles extracted from inline -->
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200 overflow-hidden">
+  <div id="app" class="h-screen w-screen" style="visibility: hidden;">
+
+  <!-- Global Search modal and other modals are rendered inside #app to preserve structure -->
+  <!-- Lock/Setup Screen -->
+  <div id="lock-screen" class="h-full w-full flex items-center justify-center bg-gray-100 dark:bg-gray-900 transition-opacity duration-500">
+    <div class="w-full max-w-md p-8 space-y-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl">
+      <div class="text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-primary-500">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+        <h2 id="lock-screen-title" class="mt-4 text-3xl font-bold text-gray-900 dark:text-white"></h2>
+        <p id="lock-screen-subtitle" class="mt-2 text-sm text-gray-600 dark:text-gray-400"></p>
+      </div>
+
+      <form id="master-password-form" class="space-y-4">
+        <div id="user-name-container" class="relative hidden">
+          <input id="user-name" type="text" class="w-full px-4 py-3 text-gray-900 bg-gray-100 dark:bg-gray-700 dark:text-white border-2 border-transparent rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Your Name">
+        </div>
+        <div class="relative">
+          <input id="master-password" type="password" required class="w-full px-4 py-3 text-gray-900 bg-gray-100 dark:bg-gray-700 dark:text-white border-2 border-transparent rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Master Password">
+        </div>
+        <div id="confirm-password-container" class="relative hidden">
+          <input id="confirm-master-password" type="password" class="w-full px-4 py-3 text-gray-900 bg-gray-100 dark:bg-gray-700 dark:text-white border-2 border-transparent rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Confirm Master Password">
+        </div>
+        <p id="password-error" class="text-red-500 text-sm h-4"></p>
+        <div>
+          <button type="submit" id="unlock-button" class="w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 dark:focus:ring-offset-gray-800 transition-transform transform hover:scale-105">Unlock</button>
+        </div>
+        <!-- Setup theme toggles -->
+        <div class="flex items-center justify-center gap-2 pt-2">
+          <button id="theme-light-setup" class="theme-btn p-2 rounded-lg" title="Light Mode">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </button>
+          <button id="theme-dark-setup" class="theme-btn p-2 rounded-lg" title="Dark Mode">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+          <button id="theme-auto-setup" class="theme-btn p-2 rounded-lg" title="System Default">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+          </button>
+        </div>
+        <div id="forgot-password-container" class="text-center pt-2" style="display: none;">
+          <button type="button" id="forgot-password-btn" class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline">Forgot password?</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Application Shell -->
+  <div id="main-app" class="h-full w-full hidden opacity-0 transition-opacity duration-500">
+    <div class="main-grid h-full grid relative">
+      <!-- Mobile Nav Toggle -->
+      <button id="mobile-menu-btn" class="lg:hidden absolute top-4 left-4 z-30 p-2 rounded-md bg-white/50 dark:bg-gray-800/50 backdrop-blur-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="3" y1="12" x2="21" y2="12"></line>
+          <line x1="3" y1="6" x2="21" y2="6"></line>
+          <line x1="3" y1="18" x2="21" y2="18"></line>
+        </svg>
+      </button>
+      <div id="mobile-overlay" class="lg:hidden fixed inset-0 bg-black/50 z-30 hidden"></div>
+
+      <!-- Left Column: Categories & Controls -->
+      <div id="nav-sidebar" class="bg-white dark:bg-gray-800/50 border-r border-gray-200 dark:border-gray-700/50 flex flex-col p-4 w-[280px] lg:relative lg:left-0">
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary-500">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+            </svg>
+            <h1 class="text-xl font-bold">Vault</h1>
+          </div>
+          <div class="flex items-center gap-1">
+            <button id="global-search-btn" class="icon-btn" title="Search (Ctrl+/)">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            </button>
+            <button id="lock-button" class="icon-btn" title="Lock Vault">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <nav id="category-nav" class="flex-grow space-y-1"></nav>
+
+        <div class="mt-4">
+          <button id="import-export-button" class="w-full flex items-center justify-center gap-2 px-3 py-2.5 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/50">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+            <span>Import / Export</span>
+          </button>
+        </div>
+
+        <div class="mt-auto pt-4 border-t border-gray-200 dark:border-gray-700/50">
+          <div id="auto-lock-footer" class="text-xs text-gray-500 dark:text-gray-400 text-center mb-2 flex items-center justify-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span id="auto-lock-footer-text">Auto-lock after 1 min of inactivity</span>
+          </div>
+          <div class="text-xs text-gray-500 dark:text-gray-400 text-center mb-3 flex items-center justify-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            Ctrl + / brings up search anywhere
+          </div>
+          <div class="flex items-center justify-center space-x-2">
+            <button id="theme-light" class="theme-btn p-2 rounded-lg" title="Light Mode"> 
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            </button>
+            <button id="theme-dark" class="theme-btn p-2 rounded-lg" title="Dark Mode">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+            </button>
+            <button id="theme-auto" class="theme-btn p-2 rounded-lg" title="System Default">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Middle Column: Item List -->
+      <div id="item-list-container" class="bg-gray-50 dark:bg-gray-900 flex-col p-4 overflow-y-auto scrollbar-hidden hidden md:flex">
+        <div class="flex items-center justify-between mb-4 sticky top-0 bg-gray-50 dark:bg-gray-900 py-2">
+          <h2 id="item-list-title" class="text-2xl font-bold"></h2>
+          <button id="add-new-item-btn" class="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 dark:focus:ring-offset-gray-900 transition-transform transform hover:scale-105">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            New
+          </button>
+        </div>
+        <div class="relative mb-4">
+          <input type="text" id="search-bar" placeholder="Search..." class="w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none">
+          <svg class="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </div>
+        <div id="item-list" class="space-y-2"></div>
+      </div>
+
+      <!-- Right Column: Details / Form -->
+      <div id="details-pane-container" class="flex-col p-6 overflow-y-auto scrollbar-hidden hidden md:flex">
+        <button id="mobile-back-btn" class="md:hidden flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          Back
+        </button>
+        <div id="details-pane" class="flex-grow">
+          <div id="details-placeholder" class="h-full flex flex-col items-center justify-center text-center text-gray-500 dark:text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="mb-4 text-gray-400 dark:text-gray-500">
+              <path d="M20 12c0-2.2-1.8-4-4-4H8c-2.2 0-4 1.8-4 4v4c0 2.2 1.8 4 4 4h8c2.2 0 4-1.8 4-4v-4z" />
+              <path d="M16 12H8" />
+            </svg>
+            <h3 class="text-xl font-semibold">Select an item</h3>
+            <p class="mt-1">Or create a new one to get started.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Third Column: Additional Content -->
+      <div id="third-panel-container" class="flex-col p-6 overflow-y-auto scrollbar-hidden hidden lg:flex">
+        <div id="third-panel" class="flex-grow"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Modals -->
+  <div id="modal-backdrop" class="fixed inset-0 bg-black/60 hidden items-center justify-center z-50">
+    <!-- Forgot Password Modal -->
+    <div id="forgot-password-modal" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 hidden">
+      <h3 class="text-2xl font-bold text-gray-800 dark:text-white flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-500"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        Password Recovery
+      </h3>
+      <p class="mt-4 text-gray-600 dark:text-gray-400">There is no way to recover your master password. However, you can save a backup of your encrypted data before wiping the vault to start over.</p>
+      <div class="mt-6 space-y-3">
+        <button id="export-from-forgot-btn" class="w-full flex items-center justify-center gap-2 px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+          Export Encrypted Backup
+        </button>
+        <button id="proceed-to-wipe-btn" class="w-full px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700">Wipe Data & Start Over</button>
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button id="cancel-forgot-modal" class="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+      </div>
+    </div>
+
+    <!-- Panic Modal -->
+    <div id="panic-modal" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 hidden">
+      <h3 class="text-2xl font-bold text-red-500 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+        Panic Wipe Confirmation
+      </h3>
+      <p class="mt-4 text-gray-600 dark:text-gray-400">Are you absolutely sure? This action cannot be undone. All your stored data will be permanently deleted from this device.</p>
+      <p class="mt-2 text-gray-600 dark:text-gray-400">To confirm, type <strong class="text-red-500 user-select-none">DELETE</strong> below.</p>
+      <input id="panic-confirm-input" type="text" class="mt-4 w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 focus:outline-none" placeholder="DELETE">
+      <div class="mt-6 flex justify-end gap-3">
+        <button id="cancel-panic" class="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+        <button id="confirm-panic" class="px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:bg-red-400 disabled:cursor-not-allowed" disabled>Wipe Data</button>
+      </div>
+    </div>
+
+    <!-- Import/Export Modal -->
+    <div id="import-export-modal" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 hidden">
+      <h3 class="text-2xl font-bold">Import / Export Data</h3>
+      <p class="mt-2 text-gray-600 dark:text-gray-400">Export your encrypted data to a file for backup, or import a previously saved file.</p>
+      <div class="mt-6 space-y-4">
+        <button id="export-data-btn" class="w-full flex items-center justify-center gap-2 px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+          Export Encrypted Vault
+        </button>
+        <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+          <div class="flex items-start gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            <div class="text-sm">
+              <p class="font-medium text-yellow-800 dark:text-yellow-200">Import Warning</p>
+              <p class="text-yellow-700 dark:text-yellow-300">Importing will completely replace all your existing credentials. Consider exporting a backup first.</p>
+            </div>
+          </div>
+        </div>
+        <div class="relative border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-gray-400 mb-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+          <p>Drag & drop a vault file here or click to select</p>
+          <input type="file" id="import-file-input" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".json">
+        </div>
+        <p id="import-status" class="text-sm h-4 text-center"></p>
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button id="close-import-export-modal" class="px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500">Close</button>
+      </div>
+    </div>
+
+    <!-- Import Verification Modal -->
+    <div id="import-verification-modal" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 hidden">
+      <div class="flex items-center gap-3 mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary-500"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+        <h3 class="text-2xl font-bold">Verify Import Identity</h3>
+      </div>
+      <p class="text-gray-600 dark:text-gray-400 mb-6">To import this vault backup, please verify your identity by providing the email and security answer used during export.</p>
+      <form id="import-verification-form" class="space-y-4">
+        <div>
+          <label for="verify-email" class="block text-sm font-medium mb-2">Email Address</label>
+          <input type="email" id="verify-email" required class="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Enter your email address">
+        </div>
+        <div>
+          <label for="verify-security-answer" class="block text-sm font-medium mb-2">Security Question</label>
+          <p id="security-question-display" class="text-sm text-gray-600 dark:text-gray-400 mb-2 p-2 bg-gray-50 dark:bg-gray-700 rounded italic"></p>
+          <input type="text" id="verify-security-answer" required class="w-full px-3 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Enter your answer">
+        </div>
+        <p id="verification-error" class="text-red-500 text-sm h-4"></p>
+        <div class="flex gap-3 pt-4">
+          <button type="button" id="cancel-verification-btn" class="flex-1 px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+          <button type="submit" id="verify-and-import-btn" class="flex-1 px-4 py-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700">Verify & Import</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="delete-confirm-modal" class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-6 hidden">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="flex-shrink-0 w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-600 dark:text-red-400"><polyline points="3,6 5,6 21,6"></polyline><path d="m19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+        </div>
+        <div>
+          <h3 class="text-lg font-semibold text-gray-900 dark:text:white">Delete Entry</h3>
+          <p class="text-sm text-gray-500 dark:text-gray-400">This action cannot be undone</p>
+        </div>
+      </div>
+      <p class="text-gray-600 dark:text-gray-400 mb-6">Are you sure you want to delete "<span id="delete-item-name" class="font-medium text-gray-900 dark:text-white"></span>"? This entry will be permanently removed from your vault.</p>
+      <div class="flex gap-3">
+        <button id="cancel-delete-btn" class="flex-1 px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+        <button id="confirm-delete-btn" class="flex-1 px-4 py-2 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Search Modal (independent backdrop) -->
+  <div id="global-search-backdrop" class="fixed inset-0 bg-black/40 hidden items-start justify-center z-[60] pt-24">
+    <div id="global-search-modal" class="w-full max-w-2xl mx-4 bg-white dark:bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
+      <div class="p-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <input id="global-search-input" type="text" placeholder="Search across all entries..." class="flex-1 bg-transparent outline-none text-sm py-2" autocomplete="off">
+        <div class="text-xs text-gray-400 hidden sm:block">Ctrl+/</div>
+      </div>
+      <div id="global-search-results" class="max-h-80 overflow-y-auto"></div>
+      <div class="p-2 text-xs text-gray-500 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div>Arrow keys to navigate • Enter to open • Esc to close</div>
+        <button id="global-search-close" class="px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">Close</button>
+      </div>
+    </div>
+  </div>
+
+  </div> <!-- end #app -->
+
+  <!-- App scripts extracted from inline -->
+  <script src="./app.js"></script>
+</body>
+</html>
