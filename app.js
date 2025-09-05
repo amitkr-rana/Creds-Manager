@@ -2425,12 +2425,32 @@ function renderProfileSettings() {
       });
     });
     const customPicker = document.getElementById("custom-accent-picker");
+    let colorChangeTimeout;
+
+    // Use 'input' for real-time preview but debounce the toast
     customPicker?.addEventListener("input", (e) => {
       const val = e.target.value;
       applyAccentTheme("custom", val);
-      showToast("Custom accent applied", "success");
-      // Update the accent theme grid selection without re-rendering the whole form
       updateAccentThemeSelection("custom");
+
+      // Clear previous timeout
+      clearTimeout(colorChangeTimeout);
+
+      // Debounce the toast message
+      colorChangeTimeout = setTimeout(() => {
+        showToast("Custom accent applied", "success");
+      }, 300);
+    });
+
+    // Also listen for 'change' to ensure final state is saved
+    customPicker?.addEventListener("change", (e) => {
+      const val = e.target.value;
+      applyAccentTheme("custom", val);
+      updateAccentThemeSelection("custom");
+
+      // Clear any pending timeout and show final message
+      clearTimeout(colorChangeTimeout);
+      showToast("Custom accent applied", "success");
     });
   }
 
