@@ -150,6 +150,192 @@ input[type=number] { appearance: textfield; -moz-appearance: textfield; }
 @keyframes flashHighlight { 0% { box-shadow: 0 0 0 3px var(--primary-500); background-color: var(--primary-50); } 60% { box-shadow: 0 0 0 0 var(--primary-500); background-color: transparent; } 100% { box-shadow: none; background-color: transparent; } }
 .flash-highlight { animation: flashHighlight 1.6s ease-out 1; }
 
+/* Shake animation for errors */
+@keyframes shake { 0%, 100% { transform: translateX(0); } 10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); } 20%, 40%, 60%, 80% { transform: translateX(4px); } }
+.shake { animation: shake 0.8s ease-in-out; }
+
+/* Shake animation for inline button - maintains position */
+@keyframes shakeInline { 
+  0%, 100% { transform: translateX(0) translateY(-50%); } 
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px) translateY(-50%); } 
+  20%, 40%, 60%, 80% { transform: translateX(4px) translateY(-50%); } 
+}
+#unlock-button.shake { animation: shakeInline 0.8s ease-in-out; }
+#create-vault-button.shake { animation: shakeInline 0.8s ease-in-out; }
+
+/* Error state styling */
+.error-state { border-color: #ef4444 !important; box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.2) !important; }
+.dark .error-state { border-color: #f87171 !important; box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.2) !important; }
+
+/* Enhanced validation message styling */
+.validation-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  margin-top: 0.5rem;
+  transition: all 0.3s ease;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+
+.validation-message span {
+  flex: 1;
+  min-width: 0;
+}
+
+.validation-message.error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05));
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #dc2626;
+}
+
+.validation-message.success {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(22, 163, 74, 0.05));
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #16a34a;
+}
+
+.validation-message.warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.05));
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #d97706;
+}
+
+.dark .validation-message.error {
+  background: linear-gradient(135deg, rgba(248, 113, 113, 0.15), rgba(239, 68, 68, 0.08));
+  border-color: rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+.dark .validation-message.success {
+  background: linear-gradient(135deg, rgba(74, 222, 128, 0.15), rgba(34, 197, 94, 0.08));
+  border-color: rgba(74, 222, 128, 0.4);
+  color: #86efac;
+}
+
+.dark .validation-message.warning {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.15), rgba(245, 158, 11, 0.08));
+  border-color: rgba(251, 191, 36, 0.4);
+  color: #fbbf24;
+}
+
+/* Invalid master password message - white text in dark mode */
+.dark .validation-message.error span {
+  color: #ffffff !important;
+}
+
+.validation-icon {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Password error container styling */
+#password-error {
+  min-height: auto;
+  overflow: visible;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+}
+
+#password-error .validation-message {
+  margin-top: 0;
+  margin-bottom: 0;
+  width: 100%;
+}
+
+/* Inline unlock button styling */
+#unlock-button {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  transform: translateY(-50%);
+}
+
+#unlock-button:active {
+  transform: translateY(-50%);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+#unlock-button:focus {
+  transform: translateY(-50%);
+}
+
+/* Button error state during shake animation */
+#unlock-button.shake {
+  background-color: #ef4444 !important;
+  border: 2px solid #dc2626 !important;
+  box-shadow: 0 0 0 2px #dc2626 !important;
+}
+
+#create-vault-button.shake {
+  background-color: #ef4444 !important;
+  border: 2px solid #dc2626 !important;
+  box-shadow: 0 0 0 2px #dc2626 !important;
+}
+
+.dark #unlock-button.shake {
+  background-color: #f87171 !important;
+  border: 2px solid #ef4444 !important;
+  box-shadow: 0 0 0 2px #ef4444 !important;
+}
+
+.dark #create-vault-button.shake {
+  background-color: #f87171 !important;
+  border: 2px solid #ef4444 !important;
+  box-shadow: 0 0 0 2px #ef4444 !important;
+}
+
+/* Error state for lock screen elements */
+.error-red {
+  color: #ef4444 !important;
+}
+
+.dark .error-red {
+  color: #f87171 !important;
+}
+
+/* Specific rule for banner with text-white class */
+#inactivity-banner.error-red {
+  color: #dc2626 !important;
+  background-color: rgba(239, 68, 68, 0.2) !important;
+  border-color: #dc2626 !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
+.dark #inactivity-banner.error-red {
+  color: #ffffff !important;
+  background-color: rgba(248, 113, 113, 0.2) !important;
+  border-color: #f87171 !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+}
+
+/* Verify and Import button error state during shake animation */
+#verify-and-import-btn.shake {
+  background-color: #ef4444 !important;
+  border-color: #dc2626 !important;
+}
+
+.dark #verify-and-import-btn.shake {
+  background-color: #f87171 !important;
+  border-color: #ef4444 !important;
+}
+
+/* Ensure input padding accounts for button */
+#master-password {
+  padding-right: 4rem !important;
+}
+
 /* Inactivity banner: transparent primary glass with subtle reflection */
 #inactivity-banner {
   position: relative;

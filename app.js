@@ -879,6 +879,7 @@ function initializeDOMElements() {
     confirmMasterPassword: document.getElementById("confirm-master-password"),
     passwordError: document.getElementById("password-error"),
     unlockButton: document.getElementById("unlock-button"),
+    createVaultButton: document.getElementById("create-vault-button"),
     forgotPasswordContainer: document.getElementById(
       "forgot-password-container"
     ),
@@ -1346,16 +1347,22 @@ function clearPasswordHistory() {
  * Main render function - controls overall app state
  */
 function render() {
+  const backToTopBtn = document.getElementById("back-to-top-btn");
+
   if (state.isLocked) {
     domElements.lockScreen.style.display = "flex";
     domElements.mainApp.style.display = "none";
     domElements.mainApp.classList.add("opacity-0");
+    // Hide back to top button on lock screen
+    if (backToTopBtn) backToTopBtn.style.display = "none";
     setTimeout(() => domElements.lockScreen.classList.remove("opacity-0"), 10);
     setupLockScreen();
   } else {
     domElements.lockScreen.style.display = "none";
     domElements.lockScreen.classList.add("opacity-0");
     domElements.mainApp.style.display = "block";
+    // Show back to top button on main app
+    if (backToTopBtn) backToTopBtn.style.display = "flex";
     setTimeout(() => domElements.mainApp.classList.remove("opacity-0"), 10);
     renderCategories();
     renderItemList();
@@ -1472,7 +1479,8 @@ function setupLockScreen() {
     if (domElements.userNameContainer) {
       domElements.userNameContainer.style.display = "none";
     }
-    domElements.unlockButton.textContent = "Unlock";
+    domElements.unlockButton.style.display = "block";
+    domElements.createVaultButton.style.display = "none";
     if (forgotPasswordContainer) {
       forgotPasswordContainer.style.display = "block";
     }
@@ -1490,7 +1498,8 @@ function setupLockScreen() {
     if (domElements.userNameContainer) {
       domElements.userNameContainer.style.display = "block";
     }
-    domElements.unlockButton.textContent = "Create Vault";
+    domElements.unlockButton.style.display = "none";
+    domElements.createVaultButton.style.display = "block";
     if (forgotPasswordContainer) {
       forgotPasswordContainer.style.display = "none";
     }
@@ -3476,7 +3485,8 @@ function handleMasterPasswordSubmit(e) {
   const userName = domElements.userName?.value.trim();
   const confirmPassword = domElements.confirmMasterPassword?.value;
 
-  domElements.passwordError.textContent = "";
+  // Clear previous validation messages
+  domElements.passwordError.innerHTML = "";
 
   if (state.hasVault) {
     // Unlock existing vault
@@ -3498,21 +3508,123 @@ function handleMasterPasswordSubmit(e) {
       render();
       showToast("Vault unlocked successfully!", "success");
     } else {
-      domElements.passwordError.textContent = "Invalid master password";
+      // Enhanced validation message with icon
+      const errorContainer = domElements.passwordError;
+      errorContainer.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+          <span>Invalid master password. Please try again.</span>
+        </div>
+      `;
+      // Shake password input and unlock button with error styling
+      const passwordInput = domElements.masterPassword;
+      const unlockButton = document.getElementById("unlock-button");
+
+      // Add red styling to lock screen elements
+      const lockIcon = document.querySelector("#lock-screen svg");
+      const banner = document.getElementById("inactivity-banner");
+      const themeButtons = document.querySelectorAll("#lock-screen .theme-btn");
+
+      passwordInput.classList.add("shake", "error-state");
+      unlockButton.classList.add("shake");
+
+      // Turn elements red (no shake)
+      if (lockIcon) lockIcon.classList.add("error-red");
+      if (banner && banner.style.display !== "none")
+        banner.classList.add("error-red");
+      themeButtons.forEach((btn) => btn.classList.add("error-red"));
+
+      setTimeout(() => {
+        passwordInput.classList.remove("shake", "error-state");
+        unlockButton.classList.remove("shake");
+
+        // Remove red styling from other elements
+        if (lockIcon) lockIcon.classList.remove("error-red");
+        if (banner && banner.style.display !== "none")
+          banner.classList.remove("error-red");
+        themeButtons.forEach((btn) => btn.classList.remove("error-red"));
+
+        // Clear error message when shake animation ends
+        domElements.passwordError.innerHTML = "";
+      }, 800); // Match shake animation duration
     }
   } else {
     // Create new vault
     if (password.length < 8) {
-      domElements.passwordError.textContent =
-        "Password must be at least 8 characters";
+      const errorContainer = domElements.passwordError;
+      errorContainer.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span>Password must be at least 8 characters long for security.</span>
+        </div>
+      `;
+      // Shake password input and create vault button
+      const passwordInput = domElements.masterPassword;
+      const createVaultButton = document.getElementById("create-vault-button");
+      passwordInput.classList.add("shake", "error-state");
+      createVaultButton.classList.add("shake");
+      setTimeout(() => {
+        passwordInput.classList.remove("shake", "error-state");
+        createVaultButton.classList.remove("shake");
+        // Clear error message when shake animation ends
+        domElements.passwordError.innerHTML = "";
+      }, 800); // Match shake animation duration
       return;
     }
     if (password !== confirmPassword) {
-      domElements.passwordError.textContent = "Passwords do not match";
+      const errorContainer = domElements.passwordError;
+      errorContainer.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6L6 18"></path>
+            <path d="M6 6l12 12"></path>
+          </svg>
+          <span>Passwords don't match. Please check and try again.</span>
+        </div>
+      `;
+      // Shake confirm password input and create vault button
+      const confirmInput = domElements.confirmMasterPassword;
+      const createVaultButton = document.getElementById("create-vault-button");
+      confirmInput.classList.add("shake", "error-state");
+      createVaultButton.classList.add("shake");
+      setTimeout(() => {
+        confirmInput.classList.remove("shake", "error-state");
+        createVaultButton.classList.remove("shake");
+        // Clear error message when shake animation ends
+        domElements.passwordError.innerHTML = "";
+      }, 800); // Match shake animation duration
       return;
     }
     if (!userName) {
-      domElements.passwordError.textContent = "Please enter your name";
+      const errorContainer = domElements.passwordError;
+      errorContainer.innerHTML = `
+        <div class="validation-message warning">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+            <circle cx="12" cy="7" r="4"></circle>
+          </svg>
+          <span>Please enter your name to personalize your vault.</span>
+        </div>
+      `;
+      // Shake name input and create vault button
+      const nameInput = domElements.userName;
+      const createVaultButton = document.getElementById("create-vault-button");
+      nameInput.classList.add("shake", "error-state");
+      createVaultButton.classList.add("shake");
+      setTimeout(() => {
+        nameInput.classList.remove("shake", "error-state");
+        createVaultButton.classList.remove("shake");
+        // Clear error message when shake animation ends
+        domElements.passwordError.innerHTML = "";
+      }, 800); // Match shake animation duration
       return;
     }
 
@@ -3821,22 +3933,77 @@ function handleImportVerification(e) {
   const errorEl = document.getElementById("verification-error");
 
   if (!email || !securityAnswer) {
-    errorEl.textContent = "Please fill in all fields";
-    errorEl.className = "text-red-500 text-sm h-4";
+    errorEl.innerHTML = `
+      <div class="validation-message error">
+        <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <span>Please fill in all fields</span>
+      </div>
+    `;
+    const verifyButton = document.getElementById("verify-and-import-btn");
+    // Shake empty fields
+    if (!email) {
+      const emailInput = document.getElementById("verify-email");
+      emailInput.classList.add("shake", "error-state");
+      verifyButton.classList.add("shake");
+      setTimeout(() => {
+        emailInput.classList.remove("shake", "error-state");
+        verifyButton.classList.remove("shake");
+        errorEl.innerHTML = "";
+      }, 800);
+    }
+    if (!securityAnswer) {
+      const answerInput = document.getElementById("verify-security-answer");
+      answerInput.classList.add("shake", "error-state");
+      verifyButton.classList.add("shake");
+      setTimeout(() => {
+        answerInput.classList.remove("shake", "error-state");
+        verifyButton.classList.remove("shake");
+        errorEl.innerHTML = "";
+      }, 800);
+    }
     return;
   }
 
   if (!window.tempImportData) {
-    errorEl.textContent = "No import data found. Please try again.";
-    errorEl.className = "text-red-500 text-sm h-4";
+    errorEl.innerHTML = `
+      <div class="validation-message error">
+        <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
+        </svg>
+        <span>No import data found. Please try again.</span>
+      </div>
+    `;
     return;
   }
 
   try {
     // Verify email matches
     if (email !== window.tempImportData.exportMetadata.userEmail) {
-      errorEl.textContent = "Email doesn't match the backup file";
-      errorEl.className = "text-red-500 text-sm h-4";
+      errorEl.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          <span>Email doesn't match the backup file</span>
+        </div>
+      `;
+      // Shake email input and verify button
+      const emailInput = document.getElementById("verify-email");
+      const verifyButton = document.getElementById("verify-and-import-btn");
+      emailInput.classList.add("shake", "error-state");
+      verifyButton.classList.add("shake");
+      setTimeout(() => {
+        emailInput.classList.remove("shake", "error-state");
+        verifyButton.classList.remove("shake");
+        errorEl.innerHTML = "";
+      }, 800);
       return;
     }
 
@@ -3860,8 +4027,26 @@ function handleImportVerification(e) {
     }
 
     if (!decryptedImportData) {
-      errorEl.textContent = "Invalid security answer or corrupted backup";
-      errorEl.className = "text-red-500 text-sm h-4";
+      errorEl.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+          <span>Invalid security answer or corrupted backup</span>
+        </div>
+      `;
+      // Shake security answer input and verify button
+      const answerInput = document.getElementById("verify-security-answer");
+      const verifyButton = document.getElementById("verify-and-import-btn");
+      answerInput.classList.add("shake", "error-state");
+      verifyButton.classList.add("shake");
+      setTimeout(() => {
+        answerInput.classList.remove("shake", "error-state");
+        verifyButton.classList.remove("shake");
+        errorEl.innerHTML = "";
+      }, 800);
       return;
     }
 
@@ -3872,9 +4057,25 @@ function handleImportVerification(e) {
         securityAnswer
       );
       if (recomputed !== meta.securityQABinding) {
-        errorEl.textContent =
-          "Security answer does not match the exported question";
-        errorEl.className = "text-red-500 text-sm h-4";
+        errorEl.innerHTML = `
+          <div class="validation-message error">
+            <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6L6 18"></path>
+              <path d="M6 6l12 12"></path>
+            </svg>
+            <span>Security answer does not match the exported question</span>
+          </div>
+        `;
+        // Shake security answer input and verify button
+        const answerInput = document.getElementById("verify-security-answer");
+        const verifyButton = document.getElementById("verify-and-import-btn");
+        answerInput.classList.add("shake", "error-state");
+        verifyButton.classList.add("shake");
+        setTimeout(() => {
+          answerInput.classList.remove("shake", "error-state");
+          verifyButton.classList.remove("shake");
+          errorEl.innerHTML = "";
+        }, 800);
         return;
       }
     }
