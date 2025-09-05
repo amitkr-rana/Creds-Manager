@@ -28,6 +28,13 @@
 
 /* Base typography */
 body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html { scroll-behavior: smooth; }
+
+/* Back to top button */
+#back-to-top-btn { position: fixed; bottom: 1.25rem; right: 1.1rem; z-index: 70; display: flex; transition: opacity .25s ease, transform .25s ease; opacity: 0.9; }
+#back-to-top-btn:hover { opacity: 1; }
+#back-to-top-btn svg { pointer-events: none; }
+.dark #back-to-top-btn { backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 
 /* Icon button */
 .icon-btn { padding: 0.5rem; border-radius: 0.5rem; transition: background-color 0.2s ease-in-out; }

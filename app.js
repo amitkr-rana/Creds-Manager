@@ -4013,6 +4013,75 @@ function init() {
   const appRoot = domElements.app;
   if (appRoot) appRoot.style.visibility = "";
 
+  // Inject back-to-top button (hidden until user reaches bottom of a scroll area)
+  if (!document.getElementById("back-to-top-btn")) {
+    const btn = document.createElement("button");
+    btn.id = "back-to-top-btn";
+    btn.type = "button";
+    btn.setAttribute("aria-label", "Back to top");
+    btn.className =
+      "items-center justify-center w-11 h-11 rounded-full bg-primary-600 text-white shadow-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 dark:focus:ring-offset-gray-900 transition-colors";
+    btn.innerHTML =
+      "<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M5 12l7-7 7 7'/><path d='M12 19V5'/></svg>";
+    document.body.appendChild(btn);
+    btn.addEventListener("click", () => {
+      const panes = document.querySelectorAll(
+        "#item-list-container, #details-pane-container, #third-panel-container, .overflow-y-auto"
+      );
+      panes.forEach((el) => {
+        if (el.scrollTop > 0) {
+          try {
+            el.scrollTo({ top: 0, behavior: "smooth" });
+          } catch (_) {}
+        }
+      });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    const tracked = new Set();
+    const collectTracked = () => {
+      document
+        .querySelectorAll(
+          "#item-list-container, #details-pane-container, #third-panel-container, .overflow-y-auto"
+        )
+        .forEach((el) => tracked.add(el));
+    };
+    collectTracked();
+    const SCROLL_SHOW_RATIO = 0.95; // show when 95% or more of scroll reached
+    const evaluate = () => {
+      let show = false;
+      tracked.forEach((el) => {
+        const style = window.getComputedStyle(el);
+        if (style.display === "none" || style.visibility === "hidden") return;
+        const max = el.scrollHeight - el.clientHeight;
+        if (max <= 0) return;
+        const ratio = el.scrollTop / max; // 0..1
+        if (ratio >= SCROLL_SHOW_RATIO) show = true;
+      });
+      const bodyMax =
+        document.documentElement.scrollHeight -
+        document.documentElement.clientHeight;
+      if (bodyMax > 0) {
+        const bodyRatio =
+          (window.scrollY || document.documentElement.scrollTop) / bodyMax;
+        if (bodyRatio >= SCROLL_SHOW_RATIO) show = true;
+      }
+      if (show) btn.classList.add("show");
+      else btn.classList.remove("show");
+    };
+    const attach = () => {
+      tracked.forEach((el) => {
+        el.addEventListener("scroll", evaluate, { passive: true });
+      });
+      window.addEventListener("scroll", evaluate, { passive: true });
+    };
+    attach();
+    document.addEventListener("vault:render", () => {
+      collectTracked();
+      evaluate();
+    });
+    evaluate();
+  }
+
   console.log("Vault 2.0: Application initialized successfully");
 }
 
