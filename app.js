@@ -1801,11 +1801,52 @@ function renderProfileSettings() {
                         <h3 class="text-lg font-semibold">Security Question</h3>
                         <div>
                             <label for="profile-security-question" class="block text-sm font-medium mb-2">Question *</label>
-                            <input type="text" id="profile-security-question" required value="${escapeHtml(
-                              user.securityQuestion || ""
-                            )}" 
-                                   class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none"
-                                   placeholder="What is the name of your first pet?">
+                            <select id="profile-security-question" required class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none">
+                                <option value="">Select a question...</option>
+                                ${[
+                                  "What is the name of your first pet?",
+                                  "What city were you born in?",
+                                  "What is your favorite teacher's name?",
+                                  "What was your first school's name?",
+                                  "What is your favorite book?",
+                                  "What is your mother's maiden name?",
+                                  "What is your dream travel destination?",
+                                  "What is the name of your first employer?",
+                                  "What was the make of your first car?",
+                                  "What is your favorite movie?",
+                                  "custom",
+                                ]
+                                  .map(
+                                    (q) =>
+                                      `<option value="${q}" ${
+                                        (user.securityQuestion || "") === q
+                                          ? "selected"
+                                          : ""
+                                      }>${
+                                        q === "custom"
+                                          ? "Custom question..."
+                                          : q
+                                      }</option>`
+                                  )
+                                  .join("")}
+                            </select>
+                            <input type="text" id="profile-security-question-custom" class="mt-3 w-full px-3 py-2 bg-white dark:bg-gray-700 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none hidden" placeholder="Enter your custom security question" value="${escapeHtml(
+                              user.securityQuestion &&
+                                ![
+                                  "What is the name of your first pet?",
+                                  "What city were you born in?",
+                                  "What is your favorite teacher's name?",
+                                  "What was your first school's name?",
+                                  "What is your favorite book?",
+                                  "What is your mother's maiden name?",
+                                  "What is your dream travel destination?",
+                                  "What is the name of your first employer?",
+                                  "What was the make of your first car?",
+                                  "What is your favorite movie?",
+                                ].includes(user.securityQuestion)
+                                ? user.securityQuestion
+                                : ""
+                            )}">
                         </div>
                         <div>
                             <label for="profile-security-answer" class="block text-sm font-medium mb-2">Answer *</label>
@@ -1828,6 +1869,17 @@ function renderProfileSettings() {
   // Setup profile form event listener
   const profileForm = document.getElementById("profile-form");
   profileForm?.addEventListener("submit", handleProfileSubmit);
+  // Initialize security question custom field toggle
+  const selQ = document.getElementById("profile-security-question");
+  const customQ = document.getElementById("profile-security-question-custom");
+  if (selQ && customQ) {
+    const toggleCustom = () => {
+      if (selQ.value === "custom") customQ.classList.remove("hidden");
+      else customQ.classList.add("hidden");
+    };
+    selQ.addEventListener("change", toggleCustom);
+    toggleCustom();
+  }
 }
 
 /**
@@ -1839,8 +1891,18 @@ function handleProfileSubmit(e) {
   const formData = {
     name: document.getElementById("profile-name")?.value.trim() || "",
     email: document.getElementById("profile-email")?.value.trim() || "",
-    securityQuestion:
-      document.getElementById("profile-security-question")?.value.trim() || "",
+    securityQuestion: (function () {
+      const sel = document.getElementById("profile-security-question");
+      const customInput = document.getElementById(
+        "profile-security-question-custom"
+      );
+      if (!sel) return "";
+      const val = sel.value.trim();
+      if (val === "custom") {
+        return customInput?.value.trim() || "";
+      }
+      return val;
+    })(),
     securityAnswer:
       document.getElementById("profile-security-answer")?.value.trim() || "",
   };
@@ -2911,7 +2973,8 @@ function setupModalEventListeners() {
     .getElementById("cancel-verification-btn")
     ?.addEventListener("click", () => {
       domElements.importVerificationModal.style.display = "none";
-      domElements.importExportModal.style.display = "block";
+      domElements.importExportModal.style.display = "none";
+      domElements.modalBackdrop.style.display = "none";
     });
 
   // Delete confirmation
@@ -3186,9 +3249,16 @@ function handleFileImport(e) {
         domElements.importVerificationModal.style.display = "block";
 
         // Pre-fill email if available
-        const emailField = document.getElementById("verification-email");
+        const emailField = document.getElementById("verify-email");
         if (emailField && importData.exportMetadata.userEmail) {
           emailField.value = importData.exportMetadata.userEmail;
+        }
+        const questionDisplay = document.getElementById(
+          "security-question-display"
+        );
+        if (questionDisplay && importData.exportMetadata.securityQuestion) {
+          questionDisplay.textContent =
+            importData.exportMetadata.securityQuestion;
         }
       } else if (
         importData.passwords ||
@@ -3248,9 +3318,9 @@ function handleFileImport(e) {
 function handleImportVerification(e) {
   e.preventDefault();
 
-  const email = document.getElementById("verification-email")?.value.trim();
+  const email = document.getElementById("verify-email")?.value.trim();
   const securityAnswer = document
-    .getElementById("verification-security-answer")
+    .getElementById("verify-security-answer")
     ?.value.trim();
   const errorEl = document.getElementById("verification-error");
 
