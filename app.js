@@ -2420,7 +2420,8 @@ function renderProfileSettings() {
         }
         applyAccentTheme(key);
         showToast(`${ACCENT_THEMES[key].label} accent applied`, "success");
-        renderProfileSettings();
+        // Update the accent theme grid selection without re-rendering the whole form
+        updateAccentThemeSelection(key);
       });
     });
     const customPicker = document.getElementById("custom-accent-picker");
@@ -2428,7 +2429,8 @@ function renderProfileSettings() {
       const val = e.target.value;
       applyAccentTheme("custom", val);
       showToast("Custom accent applied", "success");
-      renderProfileSettings();
+      // Update the accent theme grid selection without re-rendering the whole form
+      updateAccentThemeSelection("custom");
     });
   }
 
@@ -2450,6 +2452,25 @@ function renderProfileSettings() {
     }
     // If both fields have values, don't focus on anything
   }, 100);
+}
+
+/**
+ * Update accent theme selection without re-rendering the entire form
+ */
+function updateAccentThemeSelection(selectedKey) {
+  const grid = document.getElementById("accent-theme-grid");
+  if (!grid) return;
+
+  // Remove selection from all tiles
+  grid.querySelectorAll("[data-accent]").forEach((tile) => {
+    tile.classList.remove("ring-2", "ring-primary-500", "ring-offset-2");
+  });
+
+  // Add selection to the chosen tile
+  const selectedTile = grid.querySelector(`[data-accent="${selectedKey}"]`);
+  if (selectedTile) {
+    selectedTile.classList.add("ring-2", "ring-primary-500", "ring-offset-2");
+  }
 }
 
 /**
