@@ -71,51 +71,185 @@ let passwordHistory = JSON.parse(
   localStorage.getItem("passwordHistory") || "[]"
 );
 
-// Simple toast notification system (re-added)
-function showToast(message, type = "info", timeout = 3000) {
+// Enhanced toast system (app view only; lock screen banners remain unchanged)
+function showToast(message, type = "info", timeout = 2200) {
   try {
+    // Don't show toasts over lock screen (lock screen has its own UX); queue later if needed
+    if (state.isLocked) {
+      return; // silent ignore while locked
+    }
+
     let container = document.getElementById("toast-container");
     if (!container) {
       container = document.createElement("div");
       container.id = "toast-container";
-      container.style.position = "fixed";
-      container.style.top = "16px";
-      container.style.right = "16px";
-      container.style.zIndex = 9999;
-      container.style.display = "flex";
-      container.style.flexDirection = "column";
-      container.style.gap = "8px";
+      Object.assign(container.style, {
+        position: "fixed",
+        bottom: "20px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 9999,
+        display: "flex",
+        flexDirection: "column",
+        gap: "10px",
+        width: "clamp(260px, 420px, 90vw)",
+        pointerEvents: "none",
+      });
       document.body.appendChild(container);
     }
+
+    // Use theme primary color (and slight variants) instead of per-type colors
+    const basePrimary =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--primary-600")
+        .trim() || "#6366f1";
+    const altPrimary =
+      getComputedStyle(document.documentElement)
+        .getPropertyValue("--primary-700")
+        .trim() || basePrimary;
+    const colors = { base: basePrimary, ring: altPrimary };
+
     const toast = document.createElement("div");
-    toast.textContent = message;
-    toast.style.padding = "10px 14px";
-    toast.style.borderRadius = "8px";
-    toast.style.fontSize = "14px";
-    toast.style.fontWeight = 500;
-    toast.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
-    toast.style.color = "#fff";
-    toast.style.transition = "opacity .3s, transform .3s";
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(-6px)";
-    const colors = {
-      success: "#16a34a",
-      error: "#dc2626",
-      info: "#6366f1",
-      warning: "#d97706",
-    };
-    toast.style.background = colors[type] || colors.info;
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    toast.className = "vault-toast";
+    Object.assign(toast.style, {
+      position: "relative",
+      display: "flex",
+      alignItems: "flex-start",
+      gap: "10px",
+      background: `linear-gradient(135deg, ${colors.base}, ${colors.ring})`,
+      color: "#fff",
+      padding: "12px 14px 14px 14px",
+      borderRadius: "14px",
+      boxShadow:
+        "0 4px 12px -2px rgba(0,0,0,0.35), 0 0 0 1px rgba(255,255,255,0.05)",
+      fontSize: "14px",
+      fontWeight: 500,
+      lineHeight: 1.3,
+      opacity: "0",
+      transform: "translateY(6px) scale(.96)",
+      transition:
+        "opacity .35s cubic-bezier(.4,0,.2,1), transform .45s cubic-bezier(.34,1.56,.64,1)",
+      pointerEvents: "auto",
+      overflow: "hidden",
+    });
+
+    // Icon bubble
+    const iconWrap = document.createElement("div");
+    Object.assign(iconWrap.style, {
+      width: "26px",
+      height: "26px",
+      borderRadius: "8px",
+      background: "rgba(255,255,255,0.15)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+      backdropFilter: "blur(2px)",
+    });
+    // Unified icon style (single icon)
+    iconWrap.innerHTML =
+      '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>';
+
+    const msgWrap = document.createElement("div");
+    msgWrap.style.flex = "1";
+    msgWrap.style.paddingRight = "4px";
+    msgWrap.textContent = message;
+
+    // Close button
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.setAttribute("aria-label", "Dismiss notification");
+    Object.assign(closeBtn.style, {
+      background: "rgba(255,255,255,0.15)",
+      color: "#fff",
+      border: "none",
+      width: "26px",
+      height: "26px",
+      borderRadius: "8px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      cursor: "pointer",
+      transition: "background .25s",
+      flexShrink: 0,
+      marginTop: "-2px",
+    });
+    closeBtn.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    closeBtn.onmouseenter = () =>
+      (closeBtn.style.background = "rgba(255,255,255,0.25)");
+    closeBtn.onmouseleave = () =>
+      (closeBtn.style.background = "rgba(255,255,255,0.15)");
+
+    // Progress bar
+    const progress = document.createElement("div");
+    Object.assign(progress.style, {
+      position: "absolute",
+      left: 0,
+      bottom: 0,
+      height: "3px",
+      width: "100%",
+      background: "rgba(255,255,255,0.25)",
+      overflow: "hidden",
+    });
+    const bar = document.createElement("div");
+    Object.assign(bar.style, {
+      height: "100%",
+      width: "100%",
+      background: "rgba(255,255,255,0.9)",
+      transform: "translateX(0)",
+      transition: `transform ${timeout}ms linear`,
+    });
+    progress.appendChild(bar);
+
+    toast.appendChild(iconWrap);
+    toast.appendChild(msgWrap);
+    toast.appendChild(closeBtn);
+    toast.appendChild(progress);
     container.appendChild(toast);
+
     requestAnimationFrame(() => {
       toast.style.opacity = "1";
-      toast.style.transform = "translateY(0)";
+      toast.style.transform = "translateY(0) scale(1)";
+      bar.style.transform = "translateX(-100%)"; // animate timer
     });
-    setTimeout(() => {
+
+    let removalTimer = setTimeout(dismiss, timeout + 80); // small buffer
+    let removed = false;
+
+    function dismiss() {
+      if (removed) return;
+      removed = true;
       toast.style.opacity = "0";
-      toast.style.transform = "translateY(-4px)";
-      setTimeout(() => toast.remove(), 300);
-    }, timeout);
-  } catch (e) {
+      toast.style.transform = "translateY(4px) scale(.95)";
+      setTimeout(() => toast.remove(), 380);
+    }
+
+    closeBtn.addEventListener("click", () => {
+      clearTimeout(removalTimer);
+      dismiss();
+    });
+
+    // Pause on hover
+    toast.addEventListener("mouseenter", () => {
+      clearTimeout(removalTimer);
+      bar.style.transition = "none";
+      const computed = getComputedStyle(bar).transform;
+      bar.dataset.transform = computed;
+    });
+    toast.addEventListener("mouseleave", () => {
+      // resume remaining (approximate by remaining width)
+      const remaining =
+        bar.getBoundingClientRect().width /
+        progress.getBoundingClientRect().width;
+      const remainingMs = timeout * remaining;
+      bar.style.transition = `transform ${remainingMs}ms linear`;
+      bar.style.transform = "translateX(-100%)";
+      removalTimer = setTimeout(dismiss, remainingMs + 120);
+    });
+  } catch (err) {
     console.log(message);
   }
 }
@@ -163,6 +297,17 @@ function computeSecurityQABinding(question, answer) {
     return null;
   }
 }
+
+/**
+ * Generate a unique ID for items
+ */
+function generateId() {
+  // 16 chars: timestamp base36 + random segment
+  return (
+    Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+  ).toUpperCase();
+}
+
 function debounce(func, wait) {
   let timeout;
   return function executedFunction(...args) {
