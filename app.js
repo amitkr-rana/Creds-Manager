@@ -441,6 +441,8 @@ function initializeDefaultData() {
       includeNumbers: true,
       includeUppercase: true,
       includeLowercase: true,
+      accentTheme: "indigo", // new accent (primary) color theme key
+      accentCustomBase: null, // base hex when using custom
     },
   };
 }
@@ -562,6 +564,304 @@ function setupTheme() {
         applyTheme("auto");
       }
     });
+}
+
+// ========================================
+// PART 4b: ACCENT (PRIMARY) COLOR THEMES
+// ========================================
+
+// 10 preset accent palettes (Tailwind-inspired) each providing the primary-50..900 scale
+const ACCENT_THEMES = {
+  indigo: {
+    label: "Indigo",
+    palette: {
+      50: "238 242 255",
+      100: "224 231 255",
+      200: "199 210 254",
+      300: "165 180 252",
+      400: "129 140 248",
+      500: "99 102 241",
+      600: "79 70 229",
+      700: "67 56 202",
+      800: "55 48 163",
+      900: "49 46 129",
+    },
+  },
+  emerald: {
+    label: "Emerald",
+    palette: {
+      50: "236 253 245",
+      100: "209 250 229",
+      200: "167 243 208",
+      300: "110 231 183",
+      400: "52 211 153",
+      500: "16 185 129",
+      600: "5 150 105",
+      700: "4 120 87",
+      800: "6 95 70",
+      900: "6 78 59",
+    },
+  },
+  rose: {
+    label: "Rose",
+    palette: {
+      50: "255 241 242",
+      100: "255 228 230",
+      200: "254 205 211",
+      300: "253 164 175",
+      400: "251 113 133",
+      500: "244 63 94",
+      600: "225 29 72",
+      700: "190 18 60",
+      800: "159 18 57",
+      900: "136 19 55",
+    },
+  },
+  amber: {
+    label: "Amber",
+    palette: {
+      50: "255 251 235",
+      100: "254 243 199",
+      200: "253 230 138",
+      300: "252 211 77",
+      400: "251 191 36",
+      500: "245 158 11",
+      600: "217 119 6",
+      700: "180 83 9",
+      800: "146 64 14",
+      900: "120 53 15",
+    },
+  },
+  violet: {
+    label: "Violet",
+    palette: {
+      50: "245 243 255",
+      100: "237 233 254",
+      200: "221 214 254",
+      300: "196 181 253",
+      400: "167 139 250",
+      500: "139 92 246",
+      600: "124 58 237",
+      700: "109 40 217",
+      800: "91 33 182",
+      900: "76 29 149",
+    },
+  },
+  cyan: {
+    label: "Cyan",
+    palette: {
+      50: "236 254 255",
+      100: "207 250 254",
+      200: "165 243 252",
+      300: "103 232 249",
+      400: "34 211 238",
+      500: "6 182 212",
+      600: "8 145 178",
+      700: "14 116 144",
+      800: "21 94 117",
+      900: "22 78 99",
+    },
+  },
+  slate: {
+    label: "Slate",
+    palette: {
+      50: "248 250 252",
+      100: "241 245 249",
+      200: "226 232 240",
+      300: "203 213 225",
+      400: "148 163 184",
+      500: "100 116 139",
+      600: "71 85 105",
+      700: "51 65 85",
+      800: "30 41 59",
+      900: "15 23 42",
+    },
+  },
+  fuchsia: {
+    label: "Fuchsia",
+    palette: {
+      50: "253 244 255",
+      100: "250 232 255",
+      200: "245 208 254",
+      300: "240 171 252",
+      400: "232 121 249",
+      500: "217 70 239",
+      600: "192 38 211",
+      700: "162 28 175",
+      800: "134 25 143",
+      900: "112 26 117",
+    },
+  },
+  lime: {
+    label: "Lime",
+    palette: {
+      50: "247 254 231",
+      100: "236 252 203",
+      200: "217 249 157",
+      300: "190 242 100",
+      400: "163 230 53",
+      500: "132 204 22",
+      600: "101 163 13",
+      700: "77 124 15",
+      800: "63 98 18",
+      900: "54 83 20",
+    },
+  },
+  orange: {
+    label: "Orange",
+    palette: {
+      50: "255 247 237",
+      100: "255 237 213",
+      200: "254 215 170",
+      300: "253 186 116",
+      400: "251 146 60",
+      500: "249 115 22",
+      600: "234 88 12",
+      700: "194 65 12",
+      800: "154 52 18",
+      900: "124 45 18",
+    },
+  },
+};
+
+// Apply a palette (object with numeric shade keys) to CSS variables
+function setAccentPalette(palette) {
+  const root = document.documentElement;
+  [50, 100, 200, 300, 400, 500, 600, 700, 800, 900].forEach((shade) => {
+    const rgb = palette[shade];
+    if (rgb) root.style.setProperty(`--primary-${shade}`, `rgb(${rgb})`);
+  });
+}
+
+// Generate palette from a single base hex (approximation using lightness steps)
+function generatePaletteFromBase(baseHex) {
+  // Convert hex -> hsl
+  const hex = baseHex.replace("#", "");
+  const bigint = parseInt(hex, 16);
+  const r = (bigint >> 16) & 255;
+  const g = (bigint >> 8) & 255;
+  const b = bigint & 255;
+  const toHsl = (r, g, b) => {
+    const nr = r / 255,
+      ng = g / 255,
+      nb = b / 255;
+    const max = Math.max(nr, ng, nb),
+      min = Math.min(nr, ng, nb);
+    let h,
+      s,
+      l = (max + min) / 2;
+    if (max === min) {
+      h = s = 0;
+    } else {
+      const d = max - min;
+      s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+      switch (max) {
+        case nr:
+          h = (ng - nb) / d + (ng < nb ? 6 : 0);
+          break;
+        case ng:
+          h = (nb - nr) / d + 2;
+          break;
+        case nb:
+          h = (nr - ng) / d + 4;
+          break;
+      }
+      h /= 6;
+    }
+    return { h: h * 360, s: s * 100, l: l * 100 };
+  };
+  const { h, s } = toHsl(r, g, b); // ignore original lightness for scale
+  const lightnessScale = {
+    50: 96,
+    100: 92,
+    200: 85,
+    300: 75,
+    400: 65,
+    500: 55,
+    600: 48,
+    700: 40,
+    800: 32,
+    900: 25,
+  };
+  const clamp = (n) => Math.max(0, Math.min(100, n));
+  const palette = {};
+  Object.entries(lightnessScale).forEach(([k, l]) => {
+    palette[k] = hslToRgbString(h, s, l);
+  });
+  return palette;
+}
+
+function hslToRgbString(h, s, l) {
+  h /= 360;
+  s /= 100;
+  l /= 100;
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return `${Math.round(r * 255)} ${Math.round(g * 255)} ${Math.round(b * 255)}`;
+}
+
+function applyAccentTheme(themeKey, customBaseHex) {
+  let palette;
+  if (themeKey === "custom") {
+    if (!customBaseHex) {
+      const stored = localStorage.getItem("accentCustomBase") || "#6366f1";
+      palette = generatePaletteFromBase(stored);
+    } else {
+      palette = generatePaletteFromBase(customBaseHex);
+    }
+  } else if (ACCENT_THEMES[themeKey]) {
+    palette = ACCENT_THEMES[themeKey].palette;
+  } else {
+    palette = ACCENT_THEMES.indigo.palette;
+    themeKey = "indigo";
+  }
+  setAccentPalette(palette);
+  // Persist outside vault for lock screen / pre-unlock usage
+  try {
+    localStorage.setItem("accentTheme", themeKey);
+    if (customBaseHex) localStorage.setItem("accentCustomBase", customBaseHex);
+  } catch (_) {}
+  // Persist inside decrypted vault settings if available
+  if (state.decryptedData && state.decryptedData.settings) {
+    state.decryptedData.settings.accentTheme = themeKey;
+    if (customBaseHex)
+      state.decryptedData.settings.accentCustomBase = customBaseHex;
+    saveData();
+  }
+  // Refresh elements relying on computed primary color (e.g., toasts) by no-op reflow
+  document.documentElement.dispatchEvent(
+    new CustomEvent("accent-changed", { detail: { themeKey } })
+  );
+}
+
+function loadAccentTheme() {
+  // Priority: decrypted settings -> localStorage -> default
+  let themeKey = "indigo";
+  let customBase = null;
+  if (state.decryptedData?.settings?.accentTheme) {
+    themeKey = state.decryptedData.settings.accentTheme;
+    customBase = state.decryptedData.settings.accentCustomBase;
+  } else {
+    themeKey = localStorage.getItem("accentTheme") || "indigo";
+    customBase = localStorage.getItem("accentCustomBase");
+  }
+  applyAccentTheme(themeKey, customBase || undefined);
 }
 
 // ========================================
@@ -1992,6 +2292,24 @@ function renderProfileSettings() {
                         </div>
                     </div>
 
+                    <!-- Accent Theme Picker -->
+                    <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="accent-theme-section">
+                        <h3 class="text-lg font-semibold">Accent Theme</h3>
+                        <p class="text-xs text-gray-600 dark:text-gray-400">Choose an accent color used across buttons, highlights & indicators. (Independent of Light/Dark/Auto)</p>
+                        <div id="accent-theme-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"></div>
+                        <div class="mt-2">
+                          <label class="block text-sm font-medium mb-2">Custom Color</label>
+                          <div class="flex items-center gap-3">
+                            <input type="color" id="custom-accent-picker" class="w-14 h-10 p-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded cursor-pointer" value="#${(
+                              state.decryptedData.settings.accentCustomBase ||
+                              localStorage.getItem("accentCustomBase") ||
+                              "#6366f1"
+                            ).replace("#", "")}">
+                            <button type="button" id="reset-accent-theme" class="px-3 py-2 text-xs rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Reset</button>
+                          </div>
+                        </div>
+                    </div>
+
                     <button type="submit" class="w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                         Save Profile
                     </button>
@@ -2044,6 +2362,63 @@ function renderProfileSettings() {
       }
     });
   }
+
+  // Build accent theme grid
+  const grid = document.getElementById("accent-theme-grid");
+  if (grid) {
+    const currentAccent =
+      state.decryptedData.settings.accentTheme ||
+      localStorage.getItem("accentTheme") ||
+      "indigo";
+    grid.innerHTML = Object.entries(ACCENT_THEMES)
+      .map(([key, meta]) => {
+        const isActive = key === currentAccent;
+        const c600 = meta.palette[600].split(" ").map((n) => parseInt(n, 10));
+        const shade600 = `rgb(${c600.join(",")})`;
+        return `<button type="button" data-accent="${key}" class="group relative flex flex-col items-center justify-center gap-1 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 hover:shadow transition-all focus:outline-none ${
+          isActive
+            ? "ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-gray-800"
+            : ""
+        }" style="--accent-preview:${shade600};">
+        <span class="w-8 h-8 rounded-full shadow-inner" style="background: linear-gradient(135deg, rgb(${
+          meta.palette[400]
+        }), rgb(${meta.palette[600]}))"></span>
+        <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${
+          meta.label
+        }</span>
+        ${
+          isActive
+            ? '<span class="absolute top-1 right-1 text-white bg-primary-600 rounded-full p-0.5">✓</span>'
+            : ""
+        }
+      </button>`;
+      })
+      .join("");
+    grid.querySelectorAll("button[data-accent]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const key = e.currentTarget.getAttribute("data-accent");
+        applyAccentTheme(key);
+        showToast(`${ACCENT_THEMES[key].label} accent applied`, "success");
+        renderProfileSettings(); // re-render to update selection highlight
+      });
+    });
+  }
+  const customPicker = document.getElementById("custom-accent-picker");
+  if (customPicker) {
+    customPicker.addEventListener("input", (e) => {
+      const val = e.target.value;
+      applyAccentTheme("custom", val);
+      showToast("Custom accent applied", "success");
+      // Update preview check mark by re-rendering grid (avoid losing unsaved profile inputs by only updating accent section?)
+      renderProfileSettings();
+    });
+  }
+  const resetBtn = document.getElementById("reset-accent-theme");
+  resetBtn?.addEventListener("click", () => {
+    applyAccentTheme("indigo");
+    showToast("Accent reset to Indigo", "info");
+    renderProfileSettings();
+  });
 }
 
 /**
@@ -3698,6 +4073,9 @@ function init() {
 
   // Setup theme
   setupTheme();
+
+  // Load accent theme (after light/dark so variables override base)
+  loadAccentTheme();
 
   // Setup event listeners
   setupEventListeners();
