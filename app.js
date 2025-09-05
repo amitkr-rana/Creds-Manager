@@ -3906,7 +3906,7 @@ function handleFileImport(e) {
           emailField.value = "";
         }
 
-        // Show master password field for new users (no existing vault)
+        // Always show master password field for security verification
         const masterPasswordContainer = document.getElementById(
           "verify-master-password-container"
         );
@@ -3914,15 +3914,10 @@ function handleFileImport(e) {
           "verify-master-password"
         );
         if (masterPasswordContainer && masterPasswordField) {
-          if (!state.hasVault) {
-            // New user - show master password field and make it required
-            masterPasswordContainer.classList.remove("hidden");
-            masterPasswordField.required = true;
-          } else {
-            // Existing user - hide master password field and make it optional
-            masterPasswordContainer.classList.add("hidden");
-            masterPasswordField.required = false;
-          }
+          // Always show and require master password field for security
+          masterPasswordContainer.classList.remove("hidden");
+          masterPasswordField.required = true;
+          masterPasswordField.value = ""; // Never auto-populate for security
         }
 
         const questionDisplay = document.getElementById(
@@ -4036,14 +4031,8 @@ function handleImportVerification(e) {
     ?.value.trim();
   const errorEl = document.getElementById("verification-error");
 
-  // For new users, master password is required
-  const masterPasswordRequired = !state.hasVault;
-
-  if (
-    !email ||
-    !securityAnswer ||
-    (masterPasswordRequired && !verifyMasterPassword)
-  ) {
+  // Master password is always required for security verification
+  if (!email || !securityAnswer || !verifyMasterPassword) {
     errorEl.innerHTML = `
       <div class="validation-message error">
         <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4079,7 +4068,7 @@ function handleImportVerification(e) {
         updateFaviconColor("normal");
       }, 800);
     }
-    if (masterPasswordRequired && !verifyMasterPassword) {
+    if (!verifyMasterPassword) {
       const passwordInput = document.getElementById("verify-master-password");
       passwordInput.classList.add("shake", "error-state");
       verifyButton.classList.add("shake");
@@ -4117,7 +4106,7 @@ function handleImportVerification(e) {
             <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
             <polyline points="22,6 12,13 2,6"></polyline>
           </svg>
-          <span>Email doesn't match the backup file</span>
+          <span>Email doesn't match the backup file. Please enter the email used to create this backup.</span>
         </div>
       `;
       updateFaviconColor("error");
@@ -4138,11 +4127,8 @@ function handleImportVerification(e) {
     // Determine if export used question in composite key (v2.1+)
     const meta = window.tempImportData.exportMetadata || {};
 
-    // Get master password - either from state (existing users) or from verification form (new users)
-    let masterPassword = state.masterPassword;
-    if (!masterPassword && verifyMasterPassword) {
-      masterPassword = verifyMasterPassword;
-    }
+    // Use the master password entered by the user (always required for security)
+    let masterPassword = verifyMasterPassword;
 
     if (!masterPassword) {
       errorEl.innerHTML = `
@@ -4159,6 +4145,8 @@ function handleImportVerification(e) {
       return;
     }
 
+    // Validate credentials by attempting decryption with user-provided information
+    // This ensures email, master password, and security answer all match the backup
     const compositeKey = meta.compositeIncludesQuestion
       ? masterPassword + email + meta.securityQuestion + securityAnswer
       : masterPassword + email + securityAnswer; // backward compatibility (v2.0)
@@ -4184,17 +4172,25 @@ function handleImportVerification(e) {
             <line x1="15" y1="9" x2="9" y2="15"></line>
             <line x1="9" y1="9" x2="15" y2="15"></line>
           </svg>
-          <span>Invalid security answer or corrupted backup</span>
+          <span>Invalid credentials. Please check your email, master password, and security answer.</span>
         </div>
       `;
       updateFaviconColor("error");
-      // Shake security answer input and verify button
+      // Shake all input fields and verify button to indicate any could be wrong
+      const emailInput = document.getElementById("verify-email");
+      const passwordInput = document.getElementById("verify-master-password");
       const answerInput = document.getElementById("verify-security-answer");
       const verifyButton = document.getElementById("verify-and-import-btn");
-      answerInput.classList.add("shake", "error-state");
+
+      [emailInput, passwordInput, answerInput].forEach((input) => {
+        if (input) input.classList.add("shake", "error-state");
+      });
       verifyButton.classList.add("shake");
+
       setTimeout(() => {
-        answerInput.classList.remove("shake", "error-state");
+        [emailInput, passwordInput, answerInput].forEach((input) => {
+          if (input) input.classList.remove("shake", "error-state");
+        });
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
         updateFaviconColor("normal");
@@ -4235,12 +4231,22 @@ function handleImportVerification(e) {
     }
 
     // Successful verification - import the data
-    errorEl.textContent = "Verification successful! Importing data...";
-    errorEl.className = "text-green-500 text-sm h-4";
+    errorEl.innerHTML = `
+      <div class="validation-message success">
+        <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20,6 9,17 4,12"></polyline>
+        </svg>
+        <span>Verification successful! Importing data...</span>
+      </div>
+    `;
+    errorEl.className = "text-sm h-4";
     updateFaviconColor("normal");
 
     setTimeout(() => {
-      importVaultData(decryptedImportData);
+      importVaultData(
+        decryptedImportData,
+        window.tempImportData.exportMetadata
+      );
       delete window.tempImportData;
       closeAllModals();
     }, 1000);
@@ -4264,7 +4270,7 @@ function handleImportVerification(e) {
 /**
  * Import vault data and replace current data
  */
-function importVaultData(importedData) {
+function importVaultData(importedData, exportMetadata = null) {
   try {
     // Backup current data (in case user wants to restore)
     const currentBackup = {
@@ -4289,6 +4295,21 @@ function importVaultData(importedData) {
       },
     };
 
+    // Check if we'll be populating name from backup metadata for success message
+    const willPopulateName =
+      exportMetadata &&
+      exportMetadata.userName &&
+      (!state.decryptedData.user || !state.decryptedData.user.name);
+
+    // If user data doesn't exist in current vault and we have export metadata with name, populate it
+    if (willPopulateName) {
+      // For new users or users without profile data, populate name from backup metadata
+      newData.user = {
+        ...newData.user,
+        name: exportMetadata.userName,
+      };
+    }
+
     // Update state
     state.decryptedData = newData;
 
@@ -4304,7 +4325,14 @@ function importVaultData(importedData) {
       (newData.identities?.length || 0) +
       (newData.notes?.length || 0);
 
-    showToast(`Successfully imported ${totalImported} items!`, "success");
+    let successMessage = `Successfully imported ${totalImported} items!`;
+
+    // Add note about profile information if name was populated from backup
+    if (willPopulateName) {
+      successMessage += ` Profile name populated from backup.`;
+    }
+
+    showToast(successMessage, "success");
   } catch (error) {
     console.error("Import failed:", error);
     showToast("Import failed. Please try again.", "error");
