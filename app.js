@@ -2419,7 +2419,6 @@ function renderProfileSettings() {
           return;
         }
         applyAccentTheme(key);
-        showToast(`${ACCENT_THEMES[key].label} accent applied`, "success");
         // Update the accent theme grid selection without re-rendering the whole form
         updateAccentThemeSelection(key);
       });
@@ -2435,11 +2434,6 @@ function renderProfileSettings() {
 
       // Clear previous timeout
       clearTimeout(colorChangeTimeout);
-
-      // Debounce the toast message
-      colorChangeTimeout = setTimeout(() => {
-        showToast("Custom accent applied", "success");
-      }, 300);
     });
 
     // Also listen for 'change' to ensure final state is saved
@@ -2447,10 +2441,6 @@ function renderProfileSettings() {
       const val = e.target.value;
       applyAccentTheme("custom", val);
       updateAccentThemeSelection("custom");
-
-      // Clear any pending timeout and show final message
-      clearTimeout(colorChangeTimeout);
-      showToast("Custom accent applied", "success");
     });
   }
 
@@ -2696,7 +2686,6 @@ function handleProfileSubmit(e) {
       }
     }, 1200);
 
-    showToast("Please fill in all required fields", "error");
     return;
   }
 
@@ -2709,7 +2698,6 @@ function handleProfileSubmit(e) {
     currentUser.profilePromptShown !== true; // initial banner dismissal counts as change
 
   if (!changed) {
-    showToast("No changes detected", "info");
     return; // do not update timestamp or re-render
   }
 
@@ -2722,7 +2710,6 @@ function handleProfileSubmit(e) {
   };
 
   saveData();
-  showToast("Profile saved successfully!", "success");
 
   // Re-render to update last updated date / hide banner
   renderProfileSettings();
@@ -3389,7 +3376,6 @@ window.generatePassword = function (fieldId) {
   const field = document.getElementById(fieldId);
   if (field) {
     field.value = password;
-    showToast("Strong password generated!", "success");
   }
 };
 
@@ -3854,7 +3840,6 @@ function handleMasterPasswordSubmit(e) {
       } catch (_) {}
       loadViewState();
       render();
-      showToast("Vault unlocked successfully!", "success");
     } else {
       // Enhanced validation message with icon
       const errorContainer = domElements.passwordError;
@@ -4064,7 +4049,6 @@ function handleMasterPasswordSubmit(e) {
 
     saveData();
     render();
-    showToast("Vault created successfully!", "success");
   }
 }
 
