@@ -1726,6 +1726,20 @@ function renderProfileSettings() {
 
   const user = state.decryptedData.user || {};
   const showFirstLoginBanner = user && user.profilePromptShown !== true;
+  const updatedDisplay = user.updated
+    ? (() => {
+        const d = new Date(user.updated);
+        const pad = (n) => String(n).padStart(2, "0");
+        let hours = d.getHours();
+        const minutes = pad(d.getMinutes());
+        const ampm = hours >= 12 ? "PM" : "AM";
+        hours = hours % 12;
+        if (hours === 0) hours = 12;
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
+          d.getDate()
+        )} ${hours}:${minutes} ${ampm}`;
+      })()
+    : "Never";
 
   domElements.detailsPane.innerHTML = `
         <div class="space-y-6">
@@ -1836,6 +1850,9 @@ function renderProfileSettings() {
                     <button type="submit" class="w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                         Save Profile
                     </button>
+          <div id="profile-last-updated" class="text-[11px] text-gray-500 dark:text-gray-400 text-center mt-3 select-none">
+            Profile last updated: <span>${escapeHtml(updatedDisplay)}</span>
+          </div>
                 </form>
             </div>
         </div>
@@ -1920,9 +1937,22 @@ function handleProfileSubmit(e) {
     return;
   }
 
-  // Update user data
+  const currentUser = state.decryptedData.user || {};
+  const changed =
+    currentUser.name !== formData.name ||
+    currentUser.email !== formData.email ||
+    currentUser.securityQuestion !== formData.securityQuestion ||
+    currentUser.securityAnswer !== formData.securityAnswer ||
+    currentUser.profilePromptShown !== true; // initial banner dismissal counts as change
+
+  if (!changed) {
+    showToast("No changes detected", "info");
+    return; // do not update timestamp or re-render
+  }
+
+  // Update user data only if something changed
   state.decryptedData.user = {
-    ...state.decryptedData.user,
+    ...currentUser,
     ...formData,
     profilePromptShown: true,
     updated: new Date().toISOString(),
@@ -1931,7 +1961,7 @@ function handleProfileSubmit(e) {
   saveData();
   showToast("Profile saved successfully!", "success");
 
-  // Re-render to hide the banner
+  // Re-render to update last updated date / hide banner
   renderProfileSettings();
 }
 
