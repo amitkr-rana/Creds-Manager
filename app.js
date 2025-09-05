@@ -1759,18 +1759,18 @@ function renderProfileSettings() {
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <form id="profile-form" class="md:col-span-2 lg:col-span-2 space-y-6">
+                <form id="profile-form" class="md:col-span-2 lg:col-span-2 flex flex-col gap-6">
                     ${
                       showFirstLoginBanner
                         ? `
-                    <div class="p-4 rounded-lg border border-primary-200 bg-primary-50 dark:bg-primary-500/20 dark:border-primary-800 text-primary-800 dark:text-primary-200">
+                    <div class="p-4 rounded-lg profile-complete-banner">
                         <div class="flex items-start gap-2">
                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 flex-shrink-0">
                                 <circle cx="12" cy="12" r="10"></circle>
                                 <line x1="12" y1="16" x2="12" y2="12"></line>
                                 <line x1="12" y1="8" x2="12.01" y2="8"></line>
                             </svg>
-                            <p class="text-sm font-medium">Please complete your profile for secure data export/import.</p>
+                            <p class="text-sm font-medium text-primary-800 dark:text-primary-100">Please complete your profile for secure data export/import.</p>
                         </div>
                     </div>`
                         : ""
