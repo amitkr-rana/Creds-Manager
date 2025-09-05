@@ -707,21 +707,6 @@ const ACCENT_THEMES = {
       900: "54 83 20",
     },
   },
-  orange: {
-    label: "Orange",
-    palette: {
-      50: "255 247 237",
-      100: "255 237 213",
-      200: "254 215 170",
-      300: "253 186 116",
-      400: "251 146 60",
-      500: "249 115 22",
-      600: "234 88 12",
-      700: "194 65 12",
-      800: "154 52 18",
-      900: "124 45 18",
-    },
-  },
 };
 
 // Apply a palette (object with numeric shade keys) to CSS variables
@@ -2292,23 +2277,12 @@ function renderProfileSettings() {
                         </div>
                     </div>
 
-                    <!-- Accent Theme Picker -->
-                    <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="accent-theme-section">
-                        <h3 class="text-lg font-semibold">Accent Theme</h3>
-                        <p class="text-xs text-gray-600 dark:text-gray-400">Choose an accent color used across buttons, highlights & indicators. (Independent of Light/Dark/Auto)</p>
-                        <div id="accent-theme-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"></div>
-                        <div class="mt-2">
-                          <label class="block text-sm font-medium mb-2">Custom Color</label>
-                          <div class="flex items-center gap-3">
-                            <input type="color" id="custom-accent-picker" class="w-14 h-10 p-1 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded cursor-pointer" value="#${(
-                              state.decryptedData.settings.accentCustomBase ||
-                              localStorage.getItem("accentCustomBase") ||
-                              "#6366f1"
-                            ).replace("#", "")}">
-                            <button type="button" id="reset-accent-theme" class="px-3 py-2 text-xs rounded-lg bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600">Reset</button>
-                          </div>
-                        </div>
-                    </div>
+          <!-- Accent Theme Picker -->
+          <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="accent-theme-section">
+            <h3 class="text-lg font-semibold">Accent Theme</h3>
+            <p class="text-xs text-gray-600 dark:text-gray-400">Choose an accent color used across buttons, highlights & indicators. (Independent of Light/Dark/Auto)</p>
+            <div id="accent-theme-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"></div>
+          </div>
 
                     <button type="submit" class="w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                         Save Profile
@@ -2363,62 +2337,69 @@ function renderProfileSettings() {
     });
   }
 
-  // Build accent theme grid
+  // Build accent theme grid (no tick mark; border/ring highlight + integrated custom tile)
   const grid = document.getElementById("accent-theme-grid");
   if (grid) {
-    const currentAccent =
+    let currentAccent =
       state.decryptedData.settings.accentTheme ||
       localStorage.getItem("accentTheme") ||
       "indigo";
-    grid.innerHTML = Object.entries(ACCENT_THEMES)
+    if (!(currentAccent in ACCENT_THEMES) && currentAccent !== "custom") {
+      currentAccent = "indigo";
+    }
+    let html = Object.entries(ACCENT_THEMES)
       .map(([key, meta]) => {
         const isActive = key === currentAccent;
-        const c600 = meta.palette[600].split(" ").map((n) => parseInt(n, 10));
-        const shade600 = `rgb(${c600.join(",")})`;
-        return `<button type="button" data-accent="${key}" class="group relative flex flex-col items-center justify-center gap-1 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-700 hover:shadow transition-all focus:outline-none ${
+        return `<button type="button" data-accent="${key}" class="group flex flex-col items-center justify-center gap-1 p-3 rounded-lg border ${
           isActive
-            ? "ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-gray-800"
-            : ""
-        }" style="--accent-preview:${shade600};">
-        <span class="w-8 h-8 rounded-full shadow-inner" style="background: linear-gradient(135deg, rgb(${
-          meta.palette[400]
-        }), rgb(${meta.palette[600]}))"></span>
-        <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${
-          meta.label
-        }</span>
-        ${
-          isActive
-            ? '<span class="absolute top-1 right-1 text-white bg-primary-600 rounded-full p-0.5">✓</span>'
-            : ""
-        }
-      </button>`;
+            ? "ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-gray-800 border-primary-400 dark:border-primary-500"
+            : "border-gray-200 dark:border-gray-700"
+        } bg-white dark:bg-gray-700 hover:shadow transition-all focus:outline-none">
+          <span class=\"w-8 h-8 rounded-full shadow-inner\" style=\"background: linear-gradient(135deg, rgb(${
+            meta.palette[400]
+          }), rgb(${meta.palette[600]}))\"></span>
+          <span class=\"text-[11px] font-medium text-gray-600 dark:text-gray-300\">${
+            meta.label
+          }</span>
+        </button>`;
       })
       .join("");
+    const customBase =
+      state.decryptedData.settings.accentCustomBase ||
+      localStorage.getItem("accentCustomBase") ||
+      "#6366f1";
+    const customPalette = generatePaletteFromBase(customBase);
+    const customActive = currentAccent === "custom";
+    html += `<button type="button" data-accent="custom" class="group flex flex-col items-center justify-center p-3 rounded-lg border ${
+      customActive
+        ? "ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-gray-800 border-primary-400 dark:border-primary-500"
+        : "border-gray-200 dark:border-gray-700"
+    } bg-white dark:bg-gray-700 hover:shadow transition-all focus:outline-none relative">
+        <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">Custom</span>
+        <input type="color" id="custom-accent-picker" class="absolute inset-0 opacity-0 cursor-pointer" value="${customBase}" aria-label="Pick custom accent color" />
+      </button>`;
+    grid.innerHTML = html;
     grid.querySelectorAll("button[data-accent]").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         const key = e.currentTarget.getAttribute("data-accent");
+        if (key === "custom") {
+          const picker = e.currentTarget.querySelector("#custom-accent-picker");
+          picker?.click();
+          return;
+        }
         applyAccentTheme(key);
         showToast(`${ACCENT_THEMES[key].label} accent applied`, "success");
-        renderProfileSettings(); // re-render to update selection highlight
+        renderProfileSettings();
       });
     });
-  }
-  const customPicker = document.getElementById("custom-accent-picker");
-  if (customPicker) {
-    customPicker.addEventListener("input", (e) => {
+    const customPicker = document.getElementById("custom-accent-picker");
+    customPicker?.addEventListener("input", (e) => {
       const val = e.target.value;
       applyAccentTheme("custom", val);
       showToast("Custom accent applied", "success");
-      // Update preview check mark by re-rendering grid (avoid losing unsaved profile inputs by only updating accent section?)
       renderProfileSettings();
     });
   }
-  const resetBtn = document.getElementById("reset-accent-theme");
-  resetBtn?.addEventListener("click", () => {
-    applyAccentTheme("indigo");
-    showToast("Accent reset to Indigo", "info");
-    renderProfileSettings();
-  });
 }
 
 /**
@@ -3010,62 +2991,6 @@ function handleFormSubmit(e, existingItem) {
 
   // Save to localStorage
   saveData();
-
-  // Update UI
-  state.selectedItemId = data.id;
-  render();
-}
-
-/**
- * Validate form data based on category
- */
-function validateFormData(data, category) {
-  const errors = [];
-
-  switch (category) {
-    case "passwords":
-      if (!data.title) errors.push("Website/Service name is required");
-      if (!data.username) errors.push("Username/Email is required");
-      if (!data.password) errors.push("Password is required");
-      if (data.website && !isValidUrl(data.website))
-        errors.push("Please enter a valid website URL");
-      break;
-
-    case "cards":
-      if (!data.bankName) errors.push("Bank name is required");
-      if (!data.cardType) errors.push("Card type is required");
-      if (!data.nameOnAccount) errors.push("Name on card is required");
-      if (!data.cardNumber) errors.push("Card number is required");
-      if (!data.expiryDate) errors.push("Expiry date is required");
-      if (!data.cvv) errors.push("CVV is required");
-
-      // Validate card number format
-      if (data.cardNumber && data.cardNumber.replace(/\s/g, "").length < 13) {
-        errors.push("Card number must be at least 13 digits");
-      }
-
-      // Validate expiry date format
-      if (data.expiryDate && !/^\d{2}\/\d{2}$/.test(data.expiryDate)) {
-        errors.push("Expiry date must be in MM/YY format");
-      }
-
-      // Validate CVV
-      if (data.cvv && (data.cvv.length < 3 || data.cvv.length > 4)) {
-        errors.push("CVV must be 3 or 4 digits");
-      }
-      break;
-
-    case "identities":
-      if (!data.idType) errors.push("ID type is required");
-      if (!data.idNumber) errors.push("ID number is required");
-      if (!data.fullName) errors.push("Full name is required");
-      break;
-
-    case "notes":
-      if (!data.title) errors.push("Note title is required");
-      if (!data.content) errors.push("Note content is required");
-      break;
-  }
 
   if (errors.length > 0) {
     showToast(errors[0], "error");
