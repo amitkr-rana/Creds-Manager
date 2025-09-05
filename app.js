@@ -2431,6 +2431,25 @@ function renderProfileSettings() {
       renderProfileSettings();
     });
   }
+
+  // Auto-focus logic for profile section
+  setTimeout(() => {
+    const nameField = document.getElementById("profile-name");
+    const emailField = document.getElementById("profile-email");
+
+    // Focus on name field if it's empty (unlikely but possible on first navigation)
+    if (nameField && (!nameField.value || nameField.value.trim() === "")) {
+      nameField.focus();
+    }
+    // Focus on email field only if name has value BUT email is empty
+    else if (
+      emailField &&
+      (!emailField.value || emailField.value.trim() === "")
+    ) {
+      emailField.focus();
+    }
+    // If both fields have values, don't focus on anything
+  }, 100);
 }
 
 /**
@@ -2465,6 +2484,177 @@ function handleProfileSubmit(e) {
     !formData.securityQuestion ||
     !formData.securityAnswer
   ) {
+    // Find the first empty field and scroll to it
+    const fields = [
+      { id: "profile-name", value: formData.name },
+      { id: "profile-email", value: formData.email },
+      { id: "profile-security-question", value: formData.securityQuestion },
+      { id: "profile-security-answer", value: formData.securityAnswer },
+    ];
+
+    let firstEmptyField = null;
+    const emptyFields = [];
+
+    fields.forEach((field) => {
+      const element = document.getElementById(field.id);
+      if (!field.value && element) {
+        emptyFields.push(element);
+        if (!firstEmptyField) {
+          firstEmptyField = element;
+        }
+      }
+    });
+
+    // Handle custom security question case
+    const securitySelect = document.getElementById("profile-security-question");
+    const customQuestionInput = document.getElementById(
+      "profile-security-question-custom"
+    );
+    if (
+      securitySelect &&
+      securitySelect.value === "custom" &&
+      customQuestionInput &&
+      !customQuestionInput.value.trim()
+    ) {
+      emptyFields.push(customQuestionInput);
+      if (!firstEmptyField) {
+        firstEmptyField = customQuestionInput;
+      }
+    }
+
+    // Scroll to first empty field
+    if (firstEmptyField) {
+      firstEmptyField.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => firstEmptyField.focus(), 300);
+    }
+
+    // Add shake animation to all empty fields
+    emptyFields.forEach((field) => {
+      field.classList.add("shake", "error-state");
+    });
+
+    // Add shake animation to Save Profile button
+    const saveProfileBtn = document.querySelector(
+      '#profile-form button[type="submit"]'
+    );
+    if (saveProfileBtn) {
+      saveProfileBtn.classList.add("shake");
+      // Match the same color as profile icon error-red class
+      if (document.documentElement.classList.contains("dark")) {
+        saveProfileBtn.style.backgroundColor = "#f87171";
+        saveProfileBtn.style.borderColor = "#ef4444";
+      } else {
+        saveProfileBtn.style.backgroundColor = "#ef4444";
+        saveProfileBtn.style.borderColor = "#dc2626";
+      }
+    }
+
+    // Turn profile icon red
+    const profileHeaders = document.querySelectorAll("h2");
+    let profileIcon = null;
+    profileHeaders.forEach((header) => {
+      if (header.textContent.includes("Profile & Security Settings")) {
+        const iconSvg = header.parentElement.querySelector("svg");
+        if (iconSvg) {
+          profileIcon = iconSvg;
+        }
+      }
+    });
+
+    if (profileIcon) {
+      profileIcon.classList.add("error-red");
+    }
+
+    // Turn scroll to top button red
+    const backToTopBtn = document.getElementById("back-to-top-btn");
+    if (backToTopBtn) {
+      backToTopBtn.style.backgroundColor = "#dc2626";
+      backToTopBtn.style.borderColor = "#b91c1c";
+      const arrow = backToTopBtn.querySelector("svg");
+      if (arrow) {
+        arrow.style.color = "#ffffff";
+      }
+    }
+
+    // Replace banner with error banner
+    const banner = document.querySelector(".profile-complete-banner");
+    let originalBannerHTML = "";
+    if (banner) {
+      // Save original banner content
+      originalBannerHTML = banner.innerHTML;
+
+      // Replace with error banner
+      banner.innerHTML = `
+        <div class="flex items-start gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 flex-shrink-0">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <p class="text-sm font-medium text-red-600 dark:text-red-100">Please fill all fields</p>
+        </div>
+      `;
+
+      // Add error styling to banner container - following design language
+      banner.style.background =
+        "linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05))";
+      banner.style.borderColor = "rgba(239, 68, 68, 0.3)";
+      banner.style.color = "#dc2626";
+
+      // Add dark mode styling if applicable
+      if (document.documentElement.classList.contains("dark")) {
+        banner.style.background =
+          "linear-gradient(135deg, rgba(248, 113, 113, 0.15), rgba(239, 68, 68, 0.08))";
+        banner.style.borderColor = "rgba(248, 113, 113, 0.4)";
+        banner.style.color = "#fca5a5";
+        // Update icon for dark mode
+        const icon = banner.querySelector("svg");
+        if (icon) {
+          icon.setAttribute("stroke", "#f87171");
+        }
+      }
+    }
+
+    // Clean up after animation (extended for profile section)
+    setTimeout(() => {
+      emptyFields.forEach((field) => {
+        field.classList.remove("shake", "error-state");
+      });
+
+      // Remove shake and red styling from Save Profile button
+      const saveProfileBtn = document.querySelector(
+        '#profile-form button[type="submit"]'
+      );
+      if (saveProfileBtn) {
+        saveProfileBtn.classList.remove("shake");
+        saveProfileBtn.style.backgroundColor = "";
+        saveProfileBtn.style.borderColor = "";
+      }
+
+      if (profileIcon) {
+        profileIcon.classList.remove("error-red");
+      }
+
+      // Remove red styling from scroll to top button
+      const backToTopBtn = document.getElementById("back-to-top-btn");
+      if (backToTopBtn) {
+        backToTopBtn.style.backgroundColor = "";
+        backToTopBtn.style.borderColor = "";
+        const arrow = backToTopBtn.querySelector("svg");
+        if (arrow) {
+          arrow.style.color = "";
+        }
+      }
+
+      // Restore original banner
+      if (banner && originalBannerHTML) {
+        banner.innerHTML = originalBannerHTML;
+        banner.style.background = "";
+        banner.style.borderColor = "";
+        banner.style.color = "";
+      }
+    }, 1200);
+
     showToast("Please fill in all required fields", "error");
     return;
   }

@@ -380,8 +380,8 @@ html.greyscale #toast-container { filter: grayscale(0.25) brightness(1); }
   color: var(--primary-700);
 }
 .dark .profile-complete-banner {
-  background: rgba(99,102,241,0.18); /* primary-600 with transparency */
-  border: 1px solid rgba(129,140,248,0.35); /* primary-400/500 mix */
+  background: rgb(from var(--primary-600) r g b / 0.18);
+  border: 1px solid rgb(from var(--primary-400) r g b / 0.35);
   color: var(--primary-100);
   backdrop-filter: saturate(140%) blur(4px);
   -webkit-backdrop-filter: saturate(140%) blur(4px);
