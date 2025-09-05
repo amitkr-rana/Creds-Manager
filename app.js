@@ -3870,8 +3870,20 @@ function handleFileImport(e) {
       try {
         importData = JSON.parse(fileContent);
       } catch (parseError) {
-        statusEl.textContent = "Invalid JSON file format";
-        statusEl.className = "text-sm h-4 text-center text-red-600";
+        statusEl.innerHTML = `
+          <div class="validation-message error">
+            <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14,2 14,8 20,8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10,9 9,9 8,9"></polyline>
+            </svg>
+            <span>Invalid JSON file format</span>
+          </div>
+        `;
+        statusEl.className = "text-sm h-4 text-center";
+        updateFaviconColor("error");
         return;
       }
 
@@ -3888,11 +3900,31 @@ function handleFileImport(e) {
         domElements.importExportModal.style.display = "none";
         domElements.importVerificationModal.style.display = "block";
 
-        // Pre-fill email if available
+        // Don't pre-fill email - user must enter it manually for verification
         const emailField = document.getElementById("verify-email");
-        if (emailField && importData.exportMetadata.userEmail) {
-          emailField.value = importData.exportMetadata.userEmail;
+        if (emailField) {
+          emailField.value = "";
         }
+
+        // Show master password field for new users (no existing vault)
+        const masterPasswordContainer = document.getElementById(
+          "verify-master-password-container"
+        );
+        const masterPasswordField = document.getElementById(
+          "verify-master-password"
+        );
+        if (masterPasswordContainer && masterPasswordField) {
+          if (!state.hasVault) {
+            // New user - show master password field and make it required
+            masterPasswordContainer.classList.remove("hidden");
+            masterPasswordField.required = true;
+          } else {
+            // Existing user - hide master password field and make it optional
+            masterPasswordContainer.classList.add("hidden");
+            masterPasswordField.required = false;
+          }
+        }
+
         const questionDisplay = document.getElementById(
           "security-question-display"
         );
@@ -3940,20 +3972,49 @@ function handleFileImport(e) {
               closeAllModals();
             }, 500);
           } else {
-            statusEl.textContent =
-              "Could not decrypt legacy backup with current password.";
-            statusEl.className = "text-sm h-4 text-center text-red-600";
+            statusEl.innerHTML = `
+              <div class="validation-message error">
+                <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <circle cx="12" cy="16" r="1"></circle>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                <span>Could not decrypt legacy backup with current password.</span>
+              </div>
+            `;
+            statusEl.className = "text-sm h-4 text-center";
+            updateFaviconColor("error");
           }
         } else {
-          statusEl.textContent =
-            "Unknown file format. Please select a valid vault backup.";
-          statusEl.className = "text-sm h-4 text-center text-red-600";
+          statusEl.innerHTML = `
+            <div class="validation-message error">
+              <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                <polyline points="13,2 13,9 20,9"></polyline>
+                <circle cx="12" cy="15" r="3"></circle>
+                <path d="m9 18 6-6"></path>
+              </svg>
+              <span>Unknown file format. Please select a valid vault backup.</span>
+            </div>
+          `;
+          statusEl.className = "text-sm h-4 text-center";
+          updateFaviconColor("error");
         }
       }
     } catch (error) {
       console.error("Import error:", error);
-      statusEl.textContent = "Error reading file. Please try again.";
-      statusEl.className = "text-sm h-4 text-center text-red-600";
+      statusEl.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="15" y1="9" x2="9" y2="15"></line>
+            <line x1="9" y1="9" x2="15" y2="15"></line>
+          </svg>
+          <span>Error reading file. Please try again.</span>
+        </div>
+      `;
+      statusEl.className = "text-sm h-4 text-center";
+      updateFaviconColor("error");
     }
   };
 
@@ -3970,9 +4031,19 @@ function handleImportVerification(e) {
   const securityAnswer = document
     .getElementById("verify-security-answer")
     ?.value.trim();
+  const verifyMasterPassword = document
+    .getElementById("verify-master-password")
+    ?.value.trim();
   const errorEl = document.getElementById("verification-error");
 
-  if (!email || !securityAnswer) {
+  // For new users, master password is required
+  const masterPasswordRequired = !state.hasVault;
+
+  if (
+    !email ||
+    !securityAnswer ||
+    (masterPasswordRequired && !verifyMasterPassword)
+  ) {
     errorEl.innerHTML = `
       <div class="validation-message error">
         <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -3980,7 +4051,7 @@ function handleImportVerification(e) {
           <line x1="12" y1="9" x2="12" y2="13"></line>
           <line x1="12" y1="17" x2="12.01" y2="17"></line>
         </svg>
-        <span>Please fill in all fields</span>
+        <span>Please fill in all required fields</span>
       </div>
     `;
     updateFaviconColor("error");
@@ -4003,6 +4074,17 @@ function handleImportVerification(e) {
       verifyButton.classList.add("shake");
       setTimeout(() => {
         answerInput.classList.remove("shake", "error-state");
+        verifyButton.classList.remove("shake");
+        errorEl.innerHTML = "";
+        updateFaviconColor("normal");
+      }, 800);
+    }
+    if (masterPasswordRequired && !verifyMasterPassword) {
+      const passwordInput = document.getElementById("verify-master-password");
+      passwordInput.classList.add("shake", "error-state");
+      verifyButton.classList.add("shake");
+      setTimeout(() => {
+        passwordInput.classList.remove("shake", "error-state");
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
         updateFaviconColor("normal");
@@ -4055,9 +4137,31 @@ function handleImportVerification(e) {
 
     // Determine if export used question in composite key (v2.1+)
     const meta = window.tempImportData.exportMetadata || {};
+
+    // Get master password - either from state (existing users) or from verification form (new users)
+    let masterPassword = state.masterPassword;
+    if (!masterPassword && verifyMasterPassword) {
+      masterPassword = verifyMasterPassword;
+    }
+
+    if (!masterPassword) {
+      errorEl.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <circle cx="12" cy="16" r="1"></circle>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <span>Master password is required for import verification</span>
+        </div>
+      `;
+      updateFaviconColor("error");
+      return;
+    }
+
     const compositeKey = meta.compositeIncludesQuestion
-      ? state.masterPassword + email + meta.securityQuestion + securityAnswer
-      : state.masterPassword + email + securityAnswer; // backward compatibility (v2.0)
+      ? masterPassword + email + meta.securityQuestion + securityAnswer
+      : masterPassword + email + securityAnswer; // backward compatibility (v2.0)
     let decryptedImportData = decrypt(
       window.tempImportData.vaultData,
       compositeKey
@@ -4068,7 +4172,7 @@ function handleImportVerification(e) {
       // Fallback attempt: legacy (master only) if previous also failed
       decryptedImportData = decrypt(
         window.tempImportData.vaultData,
-        state.masterPassword
+        masterPassword
       );
     }
 
@@ -4142,8 +4246,17 @@ function handleImportVerification(e) {
     }, 1000);
   } catch (error) {
     console.error("Verification error:", error);
-    errorEl.textContent = "Verification failed. Please check your details.";
-    errorEl.className = "text-red-500 text-sm h-4";
+    errorEl.innerHTML = `
+      <div class="validation-message error">
+        <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
+        </svg>
+        <span>Verification failed. Please check your details.</span>
+      </div>
+    `;
+    errorEl.className = "text-sm h-4";
     updateFaviconColor("error");
   }
 }
