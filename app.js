@@ -3213,11 +3213,40 @@ function handleFormSubmit(e, existingItem) {
   // Save to localStorage
   saveData();
 
-  if (errors.length > 0) {
-    showToast(errors[0], "error");
-    return false;
-  }
+  // Set the selected item first, then render
+  state.selectedItemId = data.id;
+  render();
+  renderDetailsPane();
+}
 
+function validateFormData(data, category) {
+  // Basic validation - ensure required fields are present
+  switch (category) {
+    case "passwords":
+      if (!data.website || !data.username) {
+        showToast("Website and username are required", "error");
+        return false;
+      }
+      break;
+    case "cards":
+      if (!data.cardholderName || !data.cardNumber) {
+        showToast("Cardholder name and card number are required", "error");
+        return false;
+      }
+      break;
+    case "notes":
+      if (!data.title) {
+        showToast("Title is required", "error");
+        return false;
+      }
+      break;
+    case "identities":
+      if (!data.firstName || !data.lastName) {
+        showToast("First name and last name are required", "error");
+        return false;
+      }
+      break;
+  }
   return true;
 }
 
@@ -3330,6 +3359,18 @@ window.cancelForm = function () {
   state.selectedItemId = null;
   renderDetailsPane();
 };
+
+/**
+ * Close the third panel (form panel)
+ */
+function closeThirdPanel() {
+  const thirdPanelContainer = domElements.thirdPanelContainer;
+  if (thirdPanelContainer) {
+    thirdPanelContainer.style.display = "none";
+    domElements.thirdPanel.innerHTML = "";
+  }
+  state.selectedItemId = null;
+}
 
 /**
  * Detect card type from card number
