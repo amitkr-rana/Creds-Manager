@@ -1498,6 +1498,11 @@ function setupLockScreen() {
     if (userNameInput) {
       userNameInput.removeAttribute("required");
     }
+
+    // Auto-focus on master password field for existing vault
+    setTimeout(() => {
+      domElements.masterPassword.focus();
+    }, 100);
   } else {
     domElements.lockScreenTitle.textContent = "Vault Guard";
     domElements.lockScreenSubtitle.textContent =
@@ -1517,6 +1522,13 @@ function setupLockScreen() {
     if (userNameInput) {
       userNameInput.setAttribute("required", "");
     }
+
+    // Auto-focus on name field for new vault setup
+    setTimeout(() => {
+      if (userNameInput) {
+        userNameInput.focus();
+      }
+    }, 100);
   }
 
   // Inject/Toggle inactivity banner just below the form
@@ -2201,7 +2213,7 @@ function renderProfileSettings() {
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <form id="profile-form" class="md:col-span-2 lg:col-span-2 flex flex-col gap-6">
+                <form id="profile-form" class="md:col-span-2 lg:col-span-2 flex flex-col gap-6" novalidate>
                     ${
                       showFirstLoginBanner
                         ? `
@@ -2563,7 +2575,7 @@ function renderForm(item = null) {
           </svg>
         </button>
       </div>
-      <form id="item-form" class="space-y-6">
+      <form id="item-form" class="space-y-6" novalidate>
         ${formContent}
         <div class="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
           <button type="submit" class="flex-1 px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
@@ -3500,6 +3512,60 @@ function handleMasterPasswordSubmit(e) {
 
   if (state.hasVault) {
     // Unlock existing vault
+
+    // Check if password field is empty
+    if (!password || password.trim() === "") {
+      const errorContainer = domElements.passwordError;
+      errorContainer.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span>Please enter a password.</span>
+        </div>
+      `;
+      // Shake password input and unlock button with error styling
+      const passwordInput = domElements.masterPassword;
+      const unlockButton = document.getElementById("unlock-button");
+
+      // Add red styling to lock screen elements
+      const lockIcon = document.querySelector("#lock-screen svg");
+      const banner = document.getElementById("inactivity-banner");
+      const themeButtons = document.querySelectorAll("#lock-screen .theme-btn");
+
+      passwordInput.classList.add("shake", "error-state");
+      unlockButton.classList.add("shake");
+
+      // Turn elements red (no shake)
+      if (lockIcon) lockIcon.classList.add("error-red");
+      if (banner && banner.style.display !== "none")
+        banner.classList.add("error-red");
+      themeButtons.forEach((btn) => btn.classList.add("error-red"));
+
+      // Turn favicon red during error
+      updateFaviconColor("error");
+
+      setTimeout(() => {
+        passwordInput.classList.remove("shake", "error-state");
+        unlockButton.classList.remove("shake");
+
+        // Remove red styling from other elements
+        if (lockIcon) lockIcon.classList.remove("error-red");
+        if (banner && banner.style.display !== "none")
+          banner.classList.remove("error-red");
+        themeButtons.forEach((btn) => btn.classList.remove("error-red"));
+
+        // Restore favicon to normal color
+        updateFaviconColor("normal");
+
+        // Clear error message when shake animation ends
+        domElements.passwordError.innerHTML = "";
+      }, 800); // Match shake animation duration
+      return;
+    }
+
     const decryptedData = loadData(password);
 
     if (decryptedData) {
@@ -3570,6 +3636,65 @@ function handleMasterPasswordSubmit(e) {
     }
   } else {
     // Create new vault
+
+    // First check if any required fields are empty
+    if (!password || !confirmPassword || !userName) {
+      const errorContainer = domElements.passwordError;
+      errorContainer.innerHTML = `
+        <div class="validation-message error">
+          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+          <span>Please fill all fields</span>
+        </div>
+      `;
+
+      // Get all inputs and buttons
+      const nameInput = domElements.userName;
+      const passwordInput = domElements.masterPassword;
+      const confirmInput = domElements.confirmMasterPassword;
+      const createVaultButton = document.getElementById("create-vault-button");
+      const lockIcon = document.querySelector("#lock-screen svg");
+
+      // Only shake fields that are empty
+      const fieldsToShake = [];
+      if (nameInput && !nameInput.value.trim()) fieldsToShake.push(nameInput);
+      if (passwordInput && !passwordInput.value.trim())
+        fieldsToShake.push(passwordInput);
+      if (confirmInput && !confirmInput.value.trim())
+        fieldsToShake.push(confirmInput);
+
+      fieldsToShake.forEach((input) => {
+        input.classList.add("shake", "error-state");
+      });
+      createVaultButton.classList.add("shake");
+
+      // Turn lock icon red
+      if (lockIcon) lockIcon.classList.add("error-red");
+
+      // Turn favicon red during error
+      updateFaviconColor("error");
+
+      setTimeout(() => {
+        fieldsToShake.forEach((input) => {
+          input.classList.remove("shake", "error-state");
+        });
+        createVaultButton.classList.remove("shake");
+
+        // Remove red styling from lock icon
+        if (lockIcon) lockIcon.classList.remove("error-red");
+
+        // Restore favicon to normal color
+        updateFaviconColor("normal");
+
+        // Clear error message when shake animation ends
+        domElements.passwordError.innerHTML = "";
+      }, 800); // Match shake animation duration
+      return;
+    }
+
     if (password.length < 8) {
       const errorContainer = domElements.passwordError;
       errorContainer.innerHTML = `
@@ -3585,8 +3710,13 @@ function handleMasterPasswordSubmit(e) {
       // Shake password input and create vault button
       const passwordInput = domElements.masterPassword;
       const createVaultButton = document.getElementById("create-vault-button");
+      const lockIcon = document.querySelector("#lock-screen svg");
+
       passwordInput.classList.add("shake", "error-state");
       createVaultButton.classList.add("shake");
+
+      // Turn lock icon red
+      if (lockIcon) lockIcon.classList.add("error-red");
 
       // Turn favicon red during error
       updateFaviconColor("error");
@@ -3594,6 +3724,9 @@ function handleMasterPasswordSubmit(e) {
       setTimeout(() => {
         passwordInput.classList.remove("shake", "error-state");
         createVaultButton.classList.remove("shake");
+
+        // Remove red styling from lock icon
+        if (lockIcon) lockIcon.classList.remove("error-red");
 
         // Restore favicon to normal color
         updateFaviconColor("normal");
@@ -3617,8 +3750,13 @@ function handleMasterPasswordSubmit(e) {
       // Shake confirm password input and create vault button
       const confirmInput = domElements.confirmMasterPassword;
       const createVaultButton = document.getElementById("create-vault-button");
+      const lockIcon = document.querySelector("#lock-screen svg");
+
       confirmInput.classList.add("shake", "error-state");
       createVaultButton.classList.add("shake");
+
+      // Turn lock icon red
+      if (lockIcon) lockIcon.classList.add("error-red");
 
       // Turn favicon red during error
       updateFaviconColor("error");
@@ -3627,37 +3765,8 @@ function handleMasterPasswordSubmit(e) {
         confirmInput.classList.remove("shake", "error-state");
         createVaultButton.classList.remove("shake");
 
-        // Restore favicon to normal color
-        updateFaviconColor("normal");
-
-        // Clear error message when shake animation ends
-        domElements.passwordError.innerHTML = "";
-      }, 800); // Match shake animation duration
-      return;
-    }
-    if (!userName) {
-      const errorContainer = domElements.passwordError;
-      errorContainer.innerHTML = `
-        <div class="validation-message warning">
-          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-            <circle cx="12" cy="7" r="4"></circle>
-          </svg>
-          <span>Please enter your name to personalize your vault.</span>
-        </div>
-      `;
-      // Shake name input and create vault button
-      const nameInput = domElements.userName;
-      const createVaultButton = document.getElementById("create-vault-button");
-      nameInput.classList.add("shake", "error-state");
-      createVaultButton.classList.add("shake");
-
-      // Turn favicon red during error
-      updateFaviconColor("error");
-
-      setTimeout(() => {
-        nameInput.classList.remove("shake", "error-state");
-        createVaultButton.classList.remove("shake");
+        // Remove red styling from lock icon
+        if (lockIcon) lockIcon.classList.remove("error-red");
 
         // Restore favicon to normal color
         updateFaviconColor("normal");
@@ -3773,11 +3882,16 @@ function openImportExportModal() {
   // Reset status
   const statusEl = document.getElementById("import-status");
   const fileInput = document.getElementById("import-file-input");
+  const uploadIcon = document.querySelector(
+    "#import-export-modal .border-dashed svg"
+  );
+
   if (statusEl) {
     statusEl.textContent = "";
     statusEl.className = "text-sm h-4 text-center";
   }
   if (fileInput) fileInput.value = "";
+  if (uploadIcon) uploadIcon.classList.remove("error-red");
 }
 
 function exportEncryptedData() {
@@ -3855,8 +3969,23 @@ function handleFileImport(e) {
   if (!file) return;
 
   if (file.type !== "application/json" && !file.name.endsWith(".json")) {
-    statusEl.textContent = "Please select a valid JSON file";
-    statusEl.className = "text-sm h-4 text-center text-red-600";
+    statusEl.innerHTML = `
+      <div class="validation-message error">
+        <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+          <polyline points="14,2 14,8 20,8"></polyline>
+          <line x1="16" y1="13" x2="8" y2="13"></line>
+          <line x1="16" y1="17" x2="8" y2="17"></line>
+        </svg>
+        <span>Please select a valid JSON file</span>
+      </div>
+    `;
+    statusEl.className = "text-sm h-4 text-center";
+    const uploadIcon = document.querySelector(
+      "#import-export-modal .border-dashed svg"
+    );
+    if (uploadIcon) uploadIcon.classList.add("error-red");
+    updateFaviconColor("error");
     return;
   }
 
@@ -3883,6 +4012,10 @@ function handleFileImport(e) {
           </div>
         `;
         statusEl.className = "text-sm h-4 text-center";
+        const uploadIcon = document.querySelector(
+          "#import-export-modal .border-dashed svg"
+        );
+        if (uploadIcon) uploadIcon.classList.add("error-red");
         updateFaviconColor("error");
         return;
       }
@@ -3978,6 +4111,10 @@ function handleFileImport(e) {
               </div>
             `;
             statusEl.className = "text-sm h-4 text-center";
+            const uploadIcon = document.querySelector(
+              "#import-export-modal .border-dashed svg"
+            );
+            if (uploadIcon) uploadIcon.classList.add("error-red");
             updateFaviconColor("error");
           }
         } else {
@@ -3993,6 +4130,10 @@ function handleFileImport(e) {
             </div>
           `;
           statusEl.className = "text-sm h-4 text-center";
+          const uploadIcon = document.querySelector(
+            "#import-export-modal .border-dashed svg"
+          );
+          if (uploadIcon) uploadIcon.classList.add("error-red");
           updateFaviconColor("error");
         }
       }
@@ -4009,6 +4150,10 @@ function handleFileImport(e) {
         </div>
       `;
       statusEl.className = "text-sm h-4 text-center";
+      const uploadIcon = document.querySelector(
+        "#import-export-modal .border-dashed svg"
+      );
+      if (uploadIcon) uploadIcon.classList.add("error-red");
       updateFaviconColor("error");
     }
   };
@@ -4045,6 +4190,13 @@ function handleImportVerification(e) {
     `;
     updateFaviconColor("error");
     const verifyButton = document.getElementById("verify-and-import-btn");
+    const envelopeIcon = document.querySelector(
+      "#import-verification-modal svg"
+    );
+
+    // Turn envelope icon red
+    if (envelopeIcon) envelopeIcon.classList.add("error-red");
+
     // Shake empty fields
     if (!email) {
       const emailInput = document.getElementById("verify-email");
@@ -4055,6 +4207,7 @@ function handleImportVerification(e) {
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
         updateFaviconColor("normal");
+        if (envelopeIcon) envelopeIcon.classList.remove("error-red");
       }, 800);
     }
     if (!securityAnswer) {
@@ -4066,6 +4219,7 @@ function handleImportVerification(e) {
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
         updateFaviconColor("normal");
+        if (envelopeIcon) envelopeIcon.classList.remove("error-red");
       }, 800);
     }
     if (!verifyMasterPassword) {
@@ -4077,6 +4231,7 @@ function handleImportVerification(e) {
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
         updateFaviconColor("normal");
+        if (envelopeIcon) envelopeIcon.classList.remove("error-red");
       }, 800);
     }
     return;
@@ -4094,36 +4249,14 @@ function handleImportVerification(e) {
       </div>
     `;
     updateFaviconColor("error");
+    const envelopeIcon = document.querySelector(
+      "#import-verification-modal svg"
+    );
+    if (envelopeIcon) envelopeIcon.classList.add("error-red");
     return;
   }
 
   try {
-    // Verify email matches
-    if (email !== window.tempImportData.exportMetadata.userEmail) {
-      errorEl.innerHTML = `
-        <div class="validation-message error">
-          <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-            <polyline points="22,6 12,13 2,6"></polyline>
-          </svg>
-          <span>Email doesn't match the backup file. Please enter the email used to create this backup.</span>
-        </div>
-      `;
-      updateFaviconColor("error");
-      // Shake email input and verify button
-      const emailInput = document.getElementById("verify-email");
-      const verifyButton = document.getElementById("verify-and-import-btn");
-      emailInput.classList.add("shake", "error-state");
-      verifyButton.classList.add("shake");
-      setTimeout(() => {
-        emailInput.classList.remove("shake", "error-state");
-        verifyButton.classList.remove("shake");
-        errorEl.innerHTML = "";
-        updateFaviconColor("normal");
-      }, 800);
-      return;
-    }
-
     // Determine if export used question in composite key (v2.1+)
     const meta = window.tempImportData.exportMetadata || {};
 
@@ -4142,6 +4275,10 @@ function handleImportVerification(e) {
         </div>
       `;
       updateFaviconColor("error");
+      const envelopeIcon = document.querySelector(
+        "#import-verification-modal svg"
+      );
+      if (envelopeIcon) envelopeIcon.classList.add("error-red");
       return;
     }
 
@@ -4164,7 +4301,19 @@ function handleImportVerification(e) {
       );
     }
 
-    if (!decryptedImportData) {
+    // Check QA binding if present and credentials are valid so far
+    let validCredentials = !!decryptedImportData;
+    if (validCredentials && meta.securityQABinding) {
+      const recomputed = computeSecurityQABinding(
+        meta.securityQuestion,
+        securityAnswer
+      );
+      if (recomputed !== meta.securityQABinding) {
+        validCredentials = false;
+      }
+    }
+
+    if (!validCredentials) {
       errorEl.innerHTML = `
         <div class="validation-message error">
           <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -4176,58 +4325,40 @@ function handleImportVerification(e) {
         </div>
       `;
       updateFaviconColor("error");
-      // Shake all input fields and verify button to indicate any could be wrong
+
+      // Get all input fields and verify button
       const emailInput = document.getElementById("verify-email");
       const passwordInput = document.getElementById("verify-master-password");
       const answerInput = document.getElementById("verify-security-answer");
       const verifyButton = document.getElementById("verify-and-import-btn");
+      const envelopeIcon = document.querySelector(
+        "#import-verification-modal svg"
+      );
 
-      [emailInput, passwordInput, answerInput].forEach((input) => {
-        if (input) input.classList.add("shake", "error-state");
+      // Only shake fields that have values
+      const fieldsToShake = [];
+      if (emailInput && emailInput.value.trim()) fieldsToShake.push(emailInput);
+      if (passwordInput && passwordInput.value.trim())
+        fieldsToShake.push(passwordInput);
+      if (answerInput && answerInput.value.trim())
+        fieldsToShake.push(answerInput);
+
+      fieldsToShake.forEach((input) => {
+        input.classList.add("shake", "error-state");
       });
       verifyButton.classList.add("shake");
+      if (envelopeIcon) envelopeIcon.classList.add("error-red");
 
       setTimeout(() => {
-        [emailInput, passwordInput, answerInput].forEach((input) => {
-          if (input) input.classList.remove("shake", "error-state");
+        fieldsToShake.forEach((input) => {
+          input.classList.remove("shake", "error-state");
         });
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
         updateFaviconColor("normal");
+        if (envelopeIcon) envelopeIcon.classList.remove("error-red");
       }, 800);
       return;
-    }
-
-    // Validate QA binding if present (ensure supplied answer matches the question used during export)
-    if (meta.securityQABinding) {
-      const recomputed = computeSecurityQABinding(
-        meta.securityQuestion,
-        securityAnswer
-      );
-      if (recomputed !== meta.securityQABinding) {
-        errorEl.innerHTML = `
-          <div class="validation-message error">
-            <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18 6L6 18"></path>
-              <path d="M6 6l12 12"></path>
-            </svg>
-            <span>Security answer does not match the exported question</span>
-          </div>
-        `;
-        updateFaviconColor("error");
-        // Shake security answer input and verify button
-        const answerInput = document.getElementById("verify-security-answer");
-        const verifyButton = document.getElementById("verify-and-import-btn");
-        answerInput.classList.add("shake", "error-state");
-        verifyButton.classList.add("shake");
-        setTimeout(() => {
-          answerInput.classList.remove("shake", "error-state");
-          verifyButton.classList.remove("shake");
-          errorEl.innerHTML = "";
-          updateFaviconColor("normal");
-        }, 800);
-        return;
-      }
     }
 
     // Successful verification - import the data
@@ -4241,6 +4372,10 @@ function handleImportVerification(e) {
     `;
     errorEl.className = "text-sm h-4";
     updateFaviconColor("normal");
+    const envelopeIcon = document.querySelector(
+      "#import-verification-modal svg"
+    );
+    if (envelopeIcon) envelopeIcon.classList.remove("error-red");
 
     setTimeout(() => {
       importVaultData(
@@ -4264,6 +4399,10 @@ function handleImportVerification(e) {
     `;
     errorEl.className = "text-sm h-4";
     updateFaviconColor("error");
+    const envelopeIcon = document.querySelector(
+      "#import-verification-modal svg"
+    );
+    if (envelopeIcon) envelopeIcon.classList.add("error-red");
   }
 }
 
@@ -4381,6 +4520,16 @@ function closeAllModals() {
   const confirmPanic = document.getElementById("confirm-panic");
   if (panicInput) panicInput.value = "";
   if (confirmPanic) confirmPanic.disabled = true;
+
+  // Reset import verification modal styling
+  const envelopeIcon = document.querySelector("#import-verification-modal svg");
+  if (envelopeIcon) envelopeIcon.classList.remove("error-red");
+
+  // Reset import/export modal styling
+  const uploadIcon = document.querySelector(
+    "#import-export-modal .border-dashed svg"
+  );
+  if (uploadIcon) uploadIcon.classList.remove("error-red");
 }
 
 /**
