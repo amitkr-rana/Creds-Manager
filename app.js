@@ -71,6 +71,55 @@ let passwordHistory = JSON.parse(
   localStorage.getItem("passwordHistory") || "[]"
 );
 
+// Simple toast notification system (re-added)
+function showToast(message, type = "info", timeout = 3000) {
+  try {
+    let container = document.getElementById("toast-container");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "toast-container";
+      container.style.position = "fixed";
+      container.style.top = "16px";
+      container.style.right = "16px";
+      container.style.zIndex = 9999;
+      container.style.display = "flex";
+      container.style.flexDirection = "column";
+      container.style.gap = "8px";
+      document.body.appendChild(container);
+    }
+    const toast = document.createElement("div");
+    toast.textContent = message;
+    toast.style.padding = "10px 14px";
+    toast.style.borderRadius = "8px";
+    toast.style.fontSize = "14px";
+    toast.style.fontWeight = 500;
+    toast.style.boxShadow = "0 4px 12px rgba(0,0,0,0.15)";
+    toast.style.color = "#fff";
+    toast.style.transition = "opacity .3s, transform .3s";
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(-6px)";
+    const colors = {
+      success: "#16a34a",
+      error: "#dc2626",
+      info: "#6366f1",
+      warning: "#d97706",
+    };
+    toast.style.background = colors[type] || colors.info;
+    container.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.opacity = "1";
+      toast.style.transform = "translateY(0)";
+    });
+    setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(-4px)";
+      setTimeout(() => toast.remove(), 300);
+    }, timeout);
+  } catch (e) {
+    console.log(message);
+  }
+}
+
 // ========================================
 // PART 2: ENCRYPTION & UTILITY FUNCTIONS
 // ========================================
@@ -90,7 +139,6 @@ function encrypt(data, password) {
     throw new Error("Failed to encrypt data");
   }
 }
-
 /**
  * Decrypt data using AES
  */
@@ -105,92 +153,6 @@ function decrypt(encryptedData, password) {
     return null;
   }
 }
-
-/**
- * Generate unique ID
- */
-function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-/**
- * Show temporary toast notification
- */
-function showToast(message, type = "success") {
-  // Remove existing toast if any
-  const existingToast = document.querySelector(".toast-notification");
-  if (existingToast) {
-    existingToast.remove();
-  }
-
-  const toast = document.createElement("div");
-
-  // Use primary theme blue for all toast types and center text
-  let bgColor, textColor, borderColor;
-  const isDark = document.documentElement.classList.contains("dark");
-  bgColor = isDark ? "bg-primary-700" : "bg-primary-600";
-  textColor = "text-white";
-  borderColor = isDark ? "border-primary-600" : "border-primary-500";
-
-  toast.className = `toast-notification fixed bottom-4 right-4 px-4 py-3 rounded-lg font-medium z-50 transition-all duration-300 transform translate-y-0 opacity-100 shadow-lg border text-center ${bgColor} ${textColor} ${borderColor}`;
-  toast.textContent = message;
-
-  document.body.appendChild(toast);
-
-  // Auto remove after 3 seconds
-  setTimeout(() => {
-    toast.style.transform = "translateY(100px)";
-    toast.style.opacity = "0";
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.parentNode.removeChild(toast);
-      }
-    }, 300);
-  }, 3000);
-}
-
-/**
- * Copy text to clipboard with visual feedback
- */
-function copyToClipboardWithTimeout(text, element = null, timeout = 3000) {
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      showToast("Copied to clipboard!", "success");
-
-      // Flash highlight effect on the element if provided
-      if (element) {
-        element.classList.add("flash-highlight");
-        setTimeout(() => {
-          element.classList.remove("flash-highlight");
-        }, 1600);
-      }
-    })
-    .catch(() => {
-      // Fallback for older browsers
-      const textArea = document.createElement("textarea");
-      textArea.value = text;
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand("copy");
-        showToast("Copied to clipboard!", "success");
-        if (element) {
-          element.classList.add("flash-highlight");
-          setTimeout(() => {
-            element.classList.remove("flash-highlight");
-          }, 1600);
-        }
-      } catch (err) {
-        showToast("Failed to copy", "error");
-      }
-      document.body.removeChild(textArea);
-    });
-}
-
-/**
- * Debounce function for performance optimization
- */
 function debounce(func, wait) {
   let timeout;
   return function executedFunction(...args) {
@@ -1801,52 +1763,48 @@ function renderProfileSettings() {
                         <h3 class="text-lg font-semibold">Security Question</h3>
                         <div>
                             <label for="profile-security-question" class="block text-sm font-medium mb-2">Question *</label>
-                            <select id="profile-security-question" required class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none">
-                                <option value="">Select a question...</option>
-                                ${[
-                                  "What is the name of your first pet?",
-                                  "What city were you born in?",
-                                  "What is your favorite teacher's name?",
-                                  "What was your first school's name?",
-                                  "What is your favorite book?",
-                                  "What is your mother's maiden name?",
-                                  "What is your dream travel destination?",
-                                  "What is the name of your first employer?",
-                                  "What was the make of your first car?",
-                                  "What is your favorite movie?",
-                                  "custom",
-                                ]
+                            ${(() => {
+                              const predefinedQuestions = [
+                                "What is the name of your first pet?",
+                                "What city were you born in?",
+                                "What is your favorite teacher's name?",
+                                "What was your first school's name?",
+                                "What is your favorite book?",
+                                "What is your mother's maiden name?",
+                                "What is your dream travel destination?",
+                                "What is the name of your first employer?",
+                                "What was the make of your first car?",
+                                "What is your favorite movie?",
+                              ];
+                              const isCustom =
+                                !!user.securityQuestion &&
+                                !predefinedQuestions.includes(
+                                  user.securityQuestion
+                                );
+                              const optionsHtml =
+                                '<select id="profile-security-question" required class="w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none">' +
+                                '<option value="">Select a question...</option>' +
+                                predefinedQuestions
                                   .map(
                                     (q) =>
                                       `<option value="${q}" ${
-                                        (user.securityQuestion || "") === q
+                                        user.securityQuestion === q
                                           ? "selected"
                                           : ""
-                                      }>${
-                                        q === "custom"
-                                          ? "Custom question..."
-                                          : q
-                                      }</option>`
+                                      }>${q}</option>`
                                   )
-                                  .join("")}
-                            </select>
-                            <input type="text" id="profile-security-question-custom" class="mt-3 w-full px-3 py-2 bg-white dark:bg-gray-700 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none hidden" placeholder="Enter your custom security question" value="${escapeHtml(
-                              user.securityQuestion &&
-                                ![
-                                  "What is the name of your first pet?",
-                                  "What city were you born in?",
-                                  "What is your favorite teacher's name?",
-                                  "What was your first school's name?",
-                                  "What is your favorite book?",
-                                  "What is your mother's maiden name?",
-                                  "What is your dream travel destination?",
-                                  "What is the name of your first employer?",
-                                  "What was the make of your first car?",
-                                  "What is your favorite movie?",
-                                ].includes(user.securityQuestion)
-                                ? user.securityQuestion
-                                : ""
-                            )}">
+                                  .join("") +
+                                `<option value="custom" ${
+                                  isCustom ? "selected" : ""
+                                }>Custom question...</option>` +
+                                "</select>";
+                              const customInputHtml = `<input type="text" id="profile-security-question-custom" class="mt-3 w-full px-3 py-2 bg-white dark:bg-gray-700 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none ${
+                                isCustom ? "" : "hidden"
+                              }" placeholder="Enter your custom security question" value="${escapeHtml(
+                                isCustom ? user.securityQuestion : ""
+                              )}">`;
+                              return optionsHtml + customInputHtml;
+                            })()}
                         </div>
                         <div>
                             <label for="profile-security-answer" class="block text-sm font-medium mb-2">Answer *</label>
@@ -1869,16 +1827,36 @@ function renderProfileSettings() {
   // Setup profile form event listener
   const profileForm = document.getElementById("profile-form");
   profileForm?.addEventListener("submit", handleProfileSubmit);
-  // Initialize security question custom field toggle
+  // Initialize security question custom field toggle (reverted simple logic)
   const selQ = document.getElementById("profile-security-question");
   const customQ = document.getElementById("profile-security-question-custom");
+  const answerInput = document.getElementById("profile-security-answer");
   if (selQ && customQ) {
     const toggleCustom = () => {
       if (selQ.value === "custom") customQ.classList.remove("hidden");
       else customQ.classList.add("hidden");
     };
-    selQ.addEventListener("change", toggleCustom);
+    const currentQuestionValue = () =>
+      selQ.value === "custom" ? customQ.value.trim() : selQ.value.trim();
     toggleCustom();
+    let lastQuestionValue = currentQuestionValue();
+    selQ.addEventListener("change", () => {
+      const prev = lastQuestionValue;
+      toggleCustom();
+      const now = currentQuestionValue();
+      if (answerInput && now !== prev) {
+        answerInput.value = ""; // Clear answer because question changed
+      }
+      lastQuestionValue = now;
+    });
+    customQ.addEventListener("input", () => {
+      if (selQ.value === "custom") {
+        const current = customQ.value.trim();
+        if (current === "" && answerInput && answerInput.value !== "") {
+          answerInput.value = "";
+        }
+      }
+    });
   }
 }
 
