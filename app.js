@@ -153,6 +153,16 @@ function decrypt(encryptedData, password) {
     return null;
   }
 }
+
+// Derive a binding hash that couples the security question text with the answer.
+// This prevents silently swapping a different question while keeping the same answer for an old backup.
+function computeSecurityQABinding(question, answer) {
+  try {
+    return CryptoJS.SHA256((question || "") + "||" + (answer || "")).toString();
+  } catch (e) {
+    return null;
+  }
+}
 function debounce(func, wait) {
   let timeout;
   return function executedFunction(...args) {
@@ -175,6 +185,10 @@ function resetAutoLogoutTimer() {
   if (!state.isLocked) {
     autoLogoutTimer = setTimeout(() => {
       state.isLocked = true;
+      // Close any open modals when locking for security (import/export, verification, etc.)
+      try {
+        closeAllModals();
+      } catch (_) {}
       state.masterPassword = null;
       state.decryptedData = null;
       state.selectedItemId = null;
@@ -191,6 +205,9 @@ function resetAutoLogoutTimer() {
     }, AUTO_LOGOUT_DELAY);
   }
 }
+try {
+  closeAllModals();
+} catch (_) {}
 
 // ========================================
 // PART 3: DATA PERSISTENCE
@@ -1840,14 +1857,21 @@ function renderProfileSettings() {
       selQ.value === "custom" ? customQ.value.trim() : selQ.value.trim();
     toggleCustom();
     let lastQuestionValue = currentQuestionValue();
+    let prevSelectValue = selQ.value;
     selQ.addEventListener("change", () => {
       const prev = lastQuestionValue;
+      const wasCustom = prevSelectValue === "custom";
       toggleCustom();
       const now = currentQuestionValue();
+      // If we just left the custom option, clear its input so returning later is blank
+      if (wasCustom && selQ.value !== "custom") {
+        customQ.value = "";
+      }
       if (answerInput && now !== prev) {
         answerInput.value = ""; // Clear answer because question changed
       }
       lastQuestionValue = now;
+      prevSelectValue = selQ.value;
     });
     customQ.addEventListener("input", () => {
       if (selQ.value === "custom") {
@@ -2708,6 +2732,9 @@ function setupEventListeners() {
     state.lockedDueToRefresh = false; // nor refresh banner
     state.lockedDueToManual = true;
     try {
+      closeAllModals();
+    } catch (_) {}
+    try {
       localStorage.setItem("vaultLockReason", "manual");
     } catch (_) {}
     render();
@@ -3150,11 +3177,17 @@ function exportEncryptedData() {
     },
   };
 
-  // Create composite key for enhanced security
+  // Create composite key for enhanced security (include question to bind answer to specific question)
   const compositeKey =
     state.masterPassword +
     state.decryptedData.user.email +
+    state.decryptedData.user.securityQuestion +
     state.decryptedData.user.securityAnswer;
+
+  const qaBinding = computeSecurityQABinding(
+    state.decryptedData.user.securityQuestion,
+    state.decryptedData.user.securityAnswer
+  );
   const encryptedVaultData = encrypt(state.decryptedData, compositeKey);
 
   // Create the final export structure with metadata
@@ -3164,8 +3197,10 @@ function exportEncryptedData() {
       userName: state.decryptedData.user.name,
       userEmail: state.decryptedData.user.email,
       securityQuestion: state.decryptedData.user.securityQuestion,
+      securityQABinding: qaBinding,
       exportDate: new Date().toISOString(),
-      version: "2.0",
+      version: "2.1", // bump minor due to composite key & binding change
+      compositeIncludesQuestion: true,
     },
   };
 
@@ -3237,6 +3272,14 @@ function handleFileImport(e) {
         if (questionDisplay && importData.exportMetadata.securityQuestion) {
           questionDisplay.textContent =
             importData.exportMetadata.securityQuestion;
+        }
+        // Always clear any previously entered security answer and messages to prevent auto-pass on re-import
+        const answerField = document.getElementById("verify-security-answer");
+        if (answerField) answerField.value = "";
+        const verificationMsg = document.getElementById("verification-error");
+        if (verificationMsg) {
+          verificationMsg.textContent = "";
+          verificationMsg.className = "text-sm h-4"; // neutral reset
         }
       } else if (
         importData.passwords ||
@@ -3322,8 +3365,11 @@ function handleImportVerification(e) {
       return;
     }
 
-    // Try to decrypt with composite key
-    const compositeKey = state.masterPassword + email + securityAnswer;
+    // Determine if export used question in composite key (v2.1+)
+    const meta = window.tempImportData.exportMetadata || {};
+    const compositeKey = meta.compositeIncludesQuestion
+      ? state.masterPassword + email + meta.securityQuestion + securityAnswer
+      : state.masterPassword + email + securityAnswer; // backward compatibility (v2.0)
     let decryptedImportData = decrypt(
       window.tempImportData.vaultData,
       compositeKey
@@ -3331,6 +3377,7 @@ function handleImportVerification(e) {
 
     // If composite key fails, try with just master password (compatibility with older exports)
     if (!decryptedImportData) {
+      // Fallback attempt: legacy (master only) if previous also failed
       decryptedImportData = decrypt(
         window.tempImportData.vaultData,
         state.masterPassword
@@ -3341,6 +3388,20 @@ function handleImportVerification(e) {
       errorEl.textContent = "Invalid security answer or corrupted backup";
       errorEl.className = "text-red-500 text-sm h-4";
       return;
+    }
+
+    // Validate QA binding if present (ensure supplied answer matches the question used during export)
+    if (meta.securityQABinding) {
+      const recomputed = computeSecurityQABinding(
+        meta.securityQuestion,
+        securityAnswer
+      );
+      if (recomputed !== meta.securityQABinding) {
+        errorEl.textContent =
+          "Security answer does not match the exported question";
+        errorEl.className = "text-red-500 text-sm h-4";
+        return;
+      }
     }
 
     // Successful verification - import the data
