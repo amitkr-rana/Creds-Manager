@@ -452,6 +452,58 @@ function initializeDefaultData() {
 // ========================================
 
 /**
+ * Update favicon color
+ * @param {string} color - The color to use ('error', 'normal', or custom hex color)
+ */
+function updateFaviconColor(color = "normal") {
+  let iconColor;
+
+  if (color === "error") {
+    // Red favicon for error states
+    iconColor = "%23ef4444"; // Red color
+  } else if (color === "normal") {
+    // Normal favicon based on current theme
+    const theme = localStorage.getItem("theme") || "auto";
+    const root = document.documentElement;
+
+    if (theme === "greyscale") {
+      iconColor = "%23666666"; // Medium gray for greyscale theme
+    } else {
+      const isDark = root.classList.contains("dark");
+      iconColor = isDark ? "%23A78BFA" : "%234F46E5"; // purple-400 : indigo-600
+    }
+  } else {
+    // Custom color provided
+    iconColor = color.replace("#", "%23");
+  }
+
+  // Update favicon
+  let favicon = document.getElementById("app-favicon");
+  if (!favicon) {
+    favicon =
+      document.querySelector('link[rel="icon"]') ||
+      document.querySelector('link[rel="shortcut icon"]');
+    if (!favicon) {
+      favicon = document.createElement("link");
+      favicon.rel = "icon";
+      favicon.id = "app-favicon";
+      document.head.appendChild(favicon);
+    } else if (!favicon.id) {
+      favicon.id = "app-favicon";
+    }
+  }
+
+  if (favicon) {
+    favicon.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='${iconColor}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E`;
+
+    // Force browser to update favicon
+    const currentHref = favicon.href;
+    favicon.href = "";
+    setTimeout(() => (favicon.href = currentHref), 1);
+  }
+}
+
+/**
  * Apply theme to document
  */
 function applyTheme(theme) {
@@ -473,49 +525,7 @@ function applyTheme(theme) {
   }
 
   // Update favicon color based on theme
-  let iconColor,
-    fillColor = "none";
-
-  if (theme === "greyscale") {
-    // Greyscale theme: use gray colors
-    iconColor = "%23666666"; // Medium gray for stroke
-    fillColor = "%23CCCCCC"; // Light gray for fill
-  } else {
-    // Light/Dark/Auto themes: use primary colors
-    const isDark = root.classList.contains("dark");
-    iconColor = isDark ? "%23A78BFA" : "%234F46E5"; // purple-400 : indigo-600
-  }
-
-  // Update or create favicon
-  let favicon = document.getElementById("app-favicon");
-  if (!favicon) {
-    favicon =
-      document.querySelector('link[rel="icon"]') ||
-      document.querySelector('link[rel="shortcut icon"]');
-    if (!favicon) {
-      favicon = document.createElement("link");
-      favicon.rel = "icon";
-      favicon.id = "app-favicon";
-      document.head.appendChild(favicon);
-    } else if (!favicon.id) {
-      favicon.id = "app-favicon";
-    }
-  }
-
-  if (favicon) {
-    if (theme === "greyscale") {
-      // Greyscale favicon - outline only
-      favicon.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='${iconColor}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E`;
-    } else {
-      // Standard colored favicon
-      favicon.href = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='${iconColor}' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'/%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'/%3E%3C/svg%3E`;
-    }
-
-    // Force browser to update favicon by adding a timestamp
-    const currentHref = favicon.href;
-    favicon.href = "";
-    setTimeout(() => (favicon.href = currentHref), 1);
-  }
+  updateFaviconColor("normal");
 
   // Save theme preference
   localStorage.setItem("theme", theme);
@@ -3538,6 +3548,9 @@ function handleMasterPasswordSubmit(e) {
         banner.classList.add("error-red");
       themeButtons.forEach((btn) => btn.classList.add("error-red"));
 
+      // Turn favicon red during error
+      updateFaviconColor("error");
+
       setTimeout(() => {
         passwordInput.classList.remove("shake", "error-state");
         unlockButton.classList.remove("shake");
@@ -3547,6 +3560,9 @@ function handleMasterPasswordSubmit(e) {
         if (banner && banner.style.display !== "none")
           banner.classList.remove("error-red");
         themeButtons.forEach((btn) => btn.classList.remove("error-red"));
+
+        // Restore favicon to normal color
+        updateFaviconColor("normal");
 
         // Clear error message when shake animation ends
         domElements.passwordError.innerHTML = "";
@@ -3571,9 +3587,17 @@ function handleMasterPasswordSubmit(e) {
       const createVaultButton = document.getElementById("create-vault-button");
       passwordInput.classList.add("shake", "error-state");
       createVaultButton.classList.add("shake");
+
+      // Turn favicon red during error
+      updateFaviconColor("error");
+
       setTimeout(() => {
         passwordInput.classList.remove("shake", "error-state");
         createVaultButton.classList.remove("shake");
+
+        // Restore favicon to normal color
+        updateFaviconColor("normal");
+
         // Clear error message when shake animation ends
         domElements.passwordError.innerHTML = "";
       }, 800); // Match shake animation duration
@@ -3595,9 +3619,17 @@ function handleMasterPasswordSubmit(e) {
       const createVaultButton = document.getElementById("create-vault-button");
       confirmInput.classList.add("shake", "error-state");
       createVaultButton.classList.add("shake");
+
+      // Turn favicon red during error
+      updateFaviconColor("error");
+
       setTimeout(() => {
         confirmInput.classList.remove("shake", "error-state");
         createVaultButton.classList.remove("shake");
+
+        // Restore favicon to normal color
+        updateFaviconColor("normal");
+
         // Clear error message when shake animation ends
         domElements.passwordError.innerHTML = "";
       }, 800); // Match shake animation duration
@@ -3619,9 +3651,17 @@ function handleMasterPasswordSubmit(e) {
       const createVaultButton = document.getElementById("create-vault-button");
       nameInput.classList.add("shake", "error-state");
       createVaultButton.classList.add("shake");
+
+      // Turn favicon red during error
+      updateFaviconColor("error");
+
       setTimeout(() => {
         nameInput.classList.remove("shake", "error-state");
         createVaultButton.classList.remove("shake");
+
+        // Restore favicon to normal color
+        updateFaviconColor("normal");
+
         // Clear error message when shake animation ends
         domElements.passwordError.innerHTML = "";
       }, 800); // Match shake animation duration
@@ -3943,6 +3983,7 @@ function handleImportVerification(e) {
         <span>Please fill in all fields</span>
       </div>
     `;
+    updateFaviconColor("error");
     const verifyButton = document.getElementById("verify-and-import-btn");
     // Shake empty fields
     if (!email) {
@@ -3953,6 +3994,7 @@ function handleImportVerification(e) {
         emailInput.classList.remove("shake", "error-state");
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
+        updateFaviconColor("normal");
       }, 800);
     }
     if (!securityAnswer) {
@@ -3963,6 +4005,7 @@ function handleImportVerification(e) {
         answerInput.classList.remove("shake", "error-state");
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
+        updateFaviconColor("normal");
       }, 800);
     }
     return;
@@ -3979,6 +4022,7 @@ function handleImportVerification(e) {
         <span>No import data found. Please try again.</span>
       </div>
     `;
+    updateFaviconColor("error");
     return;
   }
 
@@ -3994,6 +4038,7 @@ function handleImportVerification(e) {
           <span>Email doesn't match the backup file</span>
         </div>
       `;
+      updateFaviconColor("error");
       // Shake email input and verify button
       const emailInput = document.getElementById("verify-email");
       const verifyButton = document.getElementById("verify-and-import-btn");
@@ -4003,6 +4048,7 @@ function handleImportVerification(e) {
         emailInput.classList.remove("shake", "error-state");
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
+        updateFaviconColor("normal");
       }, 800);
       return;
     }
@@ -4037,6 +4083,7 @@ function handleImportVerification(e) {
           <span>Invalid security answer or corrupted backup</span>
         </div>
       `;
+      updateFaviconColor("error");
       // Shake security answer input and verify button
       const answerInput = document.getElementById("verify-security-answer");
       const verifyButton = document.getElementById("verify-and-import-btn");
@@ -4046,6 +4093,7 @@ function handleImportVerification(e) {
         answerInput.classList.remove("shake", "error-state");
         verifyButton.classList.remove("shake");
         errorEl.innerHTML = "";
+        updateFaviconColor("normal");
       }, 800);
       return;
     }
@@ -4066,6 +4114,7 @@ function handleImportVerification(e) {
             <span>Security answer does not match the exported question</span>
           </div>
         `;
+        updateFaviconColor("error");
         // Shake security answer input and verify button
         const answerInput = document.getElementById("verify-security-answer");
         const verifyButton = document.getElementById("verify-and-import-btn");
@@ -4075,6 +4124,7 @@ function handleImportVerification(e) {
           answerInput.classList.remove("shake", "error-state");
           verifyButton.classList.remove("shake");
           errorEl.innerHTML = "";
+          updateFaviconColor("normal");
         }, 800);
         return;
       }
@@ -4083,6 +4133,7 @@ function handleImportVerification(e) {
     // Successful verification - import the data
     errorEl.textContent = "Verification successful! Importing data...";
     errorEl.className = "text-green-500 text-sm h-4";
+    updateFaviconColor("normal");
 
     setTimeout(() => {
       importVaultData(decryptedImportData);
@@ -4093,6 +4144,7 @@ function handleImportVerification(e) {
     console.error("Verification error:", error);
     errorEl.textContent = "Verification failed. Please check your details.";
     errorEl.className = "text-red-500 text-sm h-4";
+    updateFaviconColor("error");
   }
 }
 
