@@ -469,8 +469,26 @@ function updateFaviconColor(color = "normal") {
     if (theme === "greyscale") {
       iconColor = "%23666666"; // Medium gray for greyscale theme
     } else {
-      const isDark = root.classList.contains("dark");
-      iconColor = isDark ? "%23A78BFA" : "%234F46E5"; // purple-400 : indigo-600
+      // Get current accent theme color from CSS custom property
+      const primaryColor = getComputedStyle(root).getPropertyValue('--primary-600').trim();
+      if (primaryColor) {
+        // Convert RGB values to hex
+        const rgbMatch = primaryColor.match(/(\d+)\s+(\d+)\s+(\d+)/);
+        if (rgbMatch) {
+          const r = parseInt(rgbMatch[1]).toString(16).padStart(2, '0');
+          const g = parseInt(rgbMatch[2]).toString(16).padStart(2, '0');
+          const b = parseInt(rgbMatch[3]).toString(16).padStart(2, '0');
+          iconColor = `%23${r}${g}${b}`;
+        } else {
+          // Fallback to default indigo if parsing fails
+          const isDark = root.classList.contains("dark");
+          iconColor = isDark ? "%23A78BFA" : "%234F46E5"; // purple-400 : indigo-600
+        }
+      } else {
+        // Fallback to default indigo if CSS property not found
+        const isDark = root.classList.contains("dark");
+        iconColor = isDark ? "%23A78BFA" : "%234F46E5"; // purple-400 : indigo-600
+      }
     }
   } else {
     // Custom color provided
@@ -839,6 +857,8 @@ function applyAccentTheme(themeKey, customBaseHex) {
       state.decryptedData.settings.accentCustomBase = customBaseHex;
     saveData();
   }
+  // Update favicon to match new accent theme
+  updateFaviconColor("normal");
   // Refresh elements relying on computed primary color (e.g., toasts) by no-op reflow
   document.documentElement.dispatchEvent(
     new CustomEvent("accent-changed", { detail: { themeKey } })
