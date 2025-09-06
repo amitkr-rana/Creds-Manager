@@ -861,6 +861,8 @@ function applyAccentTheme(themeKey, customBaseHex) {
   }
   // Update favicon to match new accent theme
   updateFaviconColor("normal");
+  // Update favicon to match new accent theme
+  updateFaviconColor("normal");
   // Refresh elements relying on computed primary color (e.g., toasts) by no-op reflow
   document.documentElement.dispatchEvent(
     new CustomEvent("accent-changed", { detail: { themeKey } })
