@@ -76,6 +76,15 @@ const AUTO_LOGOUT_OPTIONS = [
   { key: 0, label: "Disabled", value: 0 },
 ];
 
+// Auto clipboard clearing options (in minutes)
+const CLIPBOARD_CLEAR_OPTIONS = [
+  { key: 1, label: "1 min", value: 1 },
+  { key: 2, label: "2 min", value: 2 },
+  { key: 5, label: "5 min", value: 5 },
+  { key: 10, label: "10 min", value: 10 },
+  { key: 0, label: "Disabled", value: 0 },
+];
+
 // Password history storage
 let passwordHistory = JSON.parse(
   localStorage.getItem("passwordHistory") || "[]"
@@ -264,6 +273,136 @@ function showToast(message, type = "info", timeout = 2200) {
   }
 }
 
+/**
+ * Copy text to clipboard with automatic clearing after a timeout
+ */
+function copyToClipboardWithTimeout(text, timeoutMinutes = null) {
+  // Modern clipboard API with proper error handling
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).catch((err) => {
+      console.warn("Modern clipboard API failed, using fallback:", err);
+      copyToClipboardFallback(text);
+    });
+  } else {
+    // Fallback for older browsers or non-secure contexts
+    copyToClipboardFallback(text);
+  }
+
+  // Show copy confirmation
+  showToast("Copied to clipboard", "success");
+
+  // Get clipboard clearing setting
+  const clearTimeoutMinutes =
+    timeoutMinutes ??
+    parseInt(
+      state.decryptedData?.settings?.clipboardClearMinutes ??
+        localStorage.getItem("clipboardClearMinutes") ??
+        1
+    );
+
+  // If clipboard clearing is enabled (not 0), set timeout to clear
+  if (clearTimeoutMinutes > 0) {
+    setTimeout(() => {
+      // Clear clipboard using modern API with fallback
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText("").catch(() => {
+          // Silently handle errors if clipboard clearing fails
+          console.warn("Clipboard clearing failed");
+        });
+      } else {
+        // For non-secure contexts, we can't reliably clear clipboard
+        console.warn("Clipboard clearing not available in non-secure context");
+      }
+
+      showToast(
+        `Clipboard cleared after ${clearTimeoutMinutes} minute${
+          clearTimeoutMinutes === 1 ? "" : "s"
+        }`,
+        "info",
+        1500
+      );
+    }, clearTimeoutMinutes * 60000); // Convert minutes to milliseconds
+  }
+}
+
+/**
+ * Fallback clipboard copy function for older browsers or non-secure contexts
+ */
+function copyToClipboardFallback(text) {
+  try {
+    // Try the deprecated execCommand as last resort
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+
+    const successful = document.execCommand("copy");
+    document.body.removeChild(textarea);
+
+    if (!successful) {
+      throw new Error("execCommand failed");
+    }
+  } catch (err) {
+    console.error("All clipboard copy methods failed:", err);
+    // Show user a manual copy prompt as final fallback
+    showClipboardManualPrompt(text);
+  }
+}
+
+/**
+ * Show manual copy prompt when all clipboard methods fail
+ */
+function showClipboardManualPrompt(text) {
+  const modal = document.createElement("div");
+  modal.className =
+    "fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50";
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md mx-4 shadow-xl">
+      <h3 class="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Manual Copy Required</h3>
+      <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+        Automatic clipboard access failed. Please manually copy the text below:
+      </p>
+      <textarea readonly class="w-full p-3 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded font-mono text-sm mb-4 select-all" rows="3">${text}</textarea>
+      <div class="flex gap-2 justify-end">
+        <button id="manual-copy-close" class="px-4 py-2 bg-primary-600 text-white rounded hover:bg-primary-700">
+          Close
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Auto-select the text
+  const textarea = modal.querySelector("textarea");
+  textarea.focus();
+  textarea.select();
+
+  // Close modal functionality
+  const closeBtn = modal.querySelector("#manual-copy-close");
+  const closeModal = () => {
+    document.body.removeChild(modal);
+  };
+
+  closeBtn.addEventListener("click", closeModal);
+  modal.addEventListener("click", (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  // Close on escape key
+  const handleEscape = (e) => {
+    if (e.key === "Escape") {
+      closeModal();
+      document.removeEventListener("keydown", handleEscape);
+    }
+  };
+  document.addEventListener("keydown", handleEscape);
+}
+
 // ========================================
 // PART 2: ENCRYPTION & UTILITY FUNCTIONS
 // ========================================
@@ -367,6 +506,12 @@ function resetAutoLogoutTimer() {
       try {
         localStorage.setItem("vaultLockReason", "inactivity");
       } catch (_) {}
+
+      // Clear session password since vault locked due to inactivity
+      try {
+        sessionStorage.removeItem("tempMasterPassword");
+      } catch (_) {}
+
       render();
     }, parseInt(autoLogoutMinutes) * 60000); // Convert minutes to milliseconds
   }
@@ -465,6 +610,8 @@ function initializeDefaultData() {
       accentTheme: "indigo", // new accent (primary) color theme key
       accentCustomBase: null, // base hex when using custom
       autoLogoutMinutes: 1, // auto logout time in minutes (0 = disabled)
+      clipboardClearMinutes: 1, // auto clipboard clearing time in minutes (0 = disabled)
+      autoLockOnRefresh: true, // whether to lock vault on page refresh (true = lock, false = stay unlocked)
     },
   };
 }
@@ -1509,15 +1656,39 @@ function setupLockScreen() {
   state.lockedDueToManual = false;
   if (hasVaultData) {
     const lockReason = localStorage.getItem("vaultLockReason");
+
+    // Check auto lock on refresh setting
+    const autoLockOnRefresh =
+      state.decryptedData?.settings?.autoLockOnRefresh ??
+      (localStorage.getItem("autoLockOnRefresh") === "false" ? false : true);
+
     if (lockReason === "inactivity") state.lockedDueToInactivity = true;
     else if (lockReason === "manual") state.lockedDueToManual = true;
-    else if (lockReason === "refresh") state.lockedDueToRefresh = true;
-    else if (localStorage.getItem("vaultWasUnlocked") === "1") {
+    else if (lockReason === "refresh") {
+      if (autoLockOnRefresh) {
+        state.lockedDueToRefresh = true;
+      } else {
+        // Auto lock on refresh is disabled, try to auto-unlock
+        localStorage.removeItem("vaultLockReason");
+        if (attemptSessionRestore()) {
+          return; // Successfully restored, exit setupLockScreen
+        }
+        // If restore failed, continue with normal lock screen setup
+      }
+    } else if (localStorage.getItem("vaultWasUnlocked") === "1") {
       // No explicit reason stored but vault was previously unlocked => refresh
-      state.lockedDueToRefresh = true;
-      try {
-        localStorage.setItem("vaultLockReason", "refresh");
-      } catch (_) {}
+      if (autoLockOnRefresh) {
+        state.lockedDueToRefresh = true;
+        try {
+          localStorage.setItem("vaultLockReason", "refresh");
+        } catch (_) {}
+      } else {
+        // Auto lock on refresh is disabled, try to auto-unlock
+        if (attemptSessionRestore()) {
+          return; // Successfully restored, exit setupLockScreen
+        }
+        // If restore failed, continue with normal lock screen setup
+      }
     }
   }
   domElements.masterPassword.value = "";
@@ -1722,6 +1893,47 @@ function getCategoryIcon(categoryKey) {
       '<svg class="w-5 h-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>',
   };
   return icons[categoryKey] || icons.passwords;
+}
+
+/**
+ * Attempt to restore session when auto lock on refresh is disabled
+ * @returns {boolean} true if session was restored, false otherwise
+ */
+function attemptSessionRestore() {
+  try {
+    const sessionPassword = sessionStorage.getItem("tempMasterPassword");
+    if (!sessionPassword) {
+      return false; // No session password stored
+    }
+
+    // Try to unlock with the stored password
+    const decryptedData = loadData(sessionPassword);
+    if (!decryptedData) {
+      // Invalid password, clear it
+      sessionStorage.removeItem("tempMasterPassword");
+      return false;
+    }
+
+    // Successfully restored session
+    state.masterPassword = sessionPassword;
+    state.decryptedData = decryptedData;
+    state.isLocked = false;
+    state.lockedDueToInactivity = false;
+    state.lockedDueToRefresh = false;
+    state.lockedDueToManual = false;
+
+    // Load view state and render
+    loadViewState();
+    render();
+    resetAutoLogoutTimer();
+    updateAutoLockFooter();
+
+    return true;
+  } catch (error) {
+    // Clear any stored session data on error
+    sessionStorage.removeItem("tempMasterPassword");
+    return false;
+  }
 }
 
 /**
@@ -2367,11 +2579,31 @@ function renderProfileSettings() {
             <div id="accent-theme-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"></div>
           </div>
 
-          <!-- Auto Logout Timer -->
-          <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="auto-logout-section">
-            <h3 class="text-lg font-semibold">Auto Logout</h3>
-            <p class="text-xs text-gray-600 dark:text-gray-400">Automatically lock the vault after a period of inactivity for security.</p>
-            <div id="auto-logout-grid" class="grid grid-cols-5 gap-3"></div>
+          <!-- Automation Settings -->
+          <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="automation-settings-section">
+            <h3 class="text-lg font-semibold">Automation Settings</h3>
+            <p class="text-xs text-gray-600 dark:text-gray-400">Configure automatic security features for enhanced protection.</p>
+            
+            <!-- Auto Logout -->
+            <div class="space-y-2">
+              <h4 class="text-sm font-medium">Auto Logout</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Automatically lock the vault after a period of inactivity.</p>
+              <div id="auto-logout-grid" class="grid grid-cols-5 gap-3"></div>
+            </div>
+            <br>
+            <!-- Auto Clipboard Clearing -->
+            <div class="space-y-2">
+              <h4 class="text-sm font-medium">Auto Clipboard Clear</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">Automatically clear clipboard after copying passwords or sensitive data.</p>
+              <div id="clipboard-clear-grid" class="grid grid-cols-5 gap-3"></div>
+            </div>
+            <br>
+            <!-- Auto Lock on Refresh -->
+            <div class="space-y-2">
+              <h4 class="text-sm font-medium">Auto Lock on Refresh</h4>
+              <p class="text-xs text-gray-500 dark:text-gray-400">When disabled, vault stays unlocked after page refresh like a normal website.</p>
+              <div id="auto-lock-refresh-grid" class="grid grid-cols-2 gap-3"></div>
+            </div>
           </div>
 
                     <button type="submit" class="w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
@@ -2543,6 +2775,93 @@ function renderProfileSettings() {
       });
   }
 
+  // Build clipboard clearing grid
+  const clipboardClearGrid = document.getElementById("clipboard-clear-grid");
+  if (clipboardClearGrid) {
+    const currentClipboardClear = parseInt(
+      state.decryptedData?.settings?.clipboardClearMinutes ??
+        localStorage.getItem("clipboardClearMinutes") ??
+        1
+    );
+
+    let clipboardClearHtml = CLIPBOARD_CLEAR_OPTIONS.map((option) => {
+      const isActive = option.key === currentClipboardClear;
+      return `<button type="button" data-clipboard-time="${
+        option.key
+      }" class="flex flex-col items-center justify-center gap-1 p-3 rounded-lg border ${
+        isActive
+          ? "ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-gray-800 border-primary-400 dark:border-primary-500"
+          : "border-gray-200 dark:border-gray-700"
+      } bg-white dark:bg-gray-700 hover:shadow transition-all focus:outline-none">
+          <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${
+            option.label
+          }</span>
+        </button>`;
+    }).join("");
+
+    clipboardClearGrid.innerHTML = clipboardClearHtml;
+
+    // Add click handlers for clipboard clearing options
+    clipboardClearGrid
+      .querySelectorAll("button[data-clipboard-time]")
+      .forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const minutes = parseInt(
+            e.currentTarget.getAttribute("data-clipboard-time")
+          );
+          setClipboardClearTime(minutes);
+          updateClipboardClearSelection(minutes);
+        });
+      });
+  }
+
+  // Build auto lock on refresh grid
+  const autoLockRefreshGrid = document.getElementById("auto-lock-refresh-grid");
+  if (autoLockRefreshGrid) {
+    const currentAutoLockRefresh =
+      state.decryptedData?.settings?.autoLockOnRefresh ??
+      (localStorage.getItem("autoLockOnRefresh") === "false" ? false : true);
+
+    const refreshOptions = [
+      { key: true, label: "Enabled", description: "Lock on refresh" },
+      { key: false, label: "Disabled", description: "Stay unlocked" },
+    ];
+
+    let autoLockRefreshHtml = refreshOptions
+      .map((option) => {
+        const isActive = option.key === currentAutoLockRefresh;
+        return `<button type="button" data-refresh-lock="${
+          option.key
+        }" class="flex flex-col items-start justify-center gap-1 p-3 rounded-lg border ${
+          isActive
+            ? "ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-gray-800 border-primary-400 dark:border-primary-500"
+            : "border-gray-200 dark:border-gray-700"
+        } bg-white dark:bg-gray-700 hover:shadow transition-all focus:outline-none">
+          <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${
+            option.label
+          }</span>
+          <span class="text-[10px] text-gray-500 dark:text-gray-400">${
+            option.description
+          }</span>
+        </button>`;
+      })
+      .join("");
+
+    autoLockRefreshGrid.innerHTML = autoLockRefreshHtml;
+
+    // Add click handlers for auto lock refresh options
+    autoLockRefreshGrid
+      .querySelectorAll("button[data-refresh-lock]")
+      .forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const enabled =
+            e.currentTarget.getAttribute("data-refresh-lock") === "true";
+          setAutoLockOnRefresh(enabled);
+          updateAutoLockRefreshSelection(enabled);
+        });
+      });
+  }
+
   // Auto-focus logic for profile section
   setTimeout(() => {
     const nameField = document.getElementById("profile-name");
@@ -2650,6 +2969,142 @@ function updateAutoLogoutSelection(selectedMinutes) {
   // Add selection to the chosen tile
   const selectedTile = grid.querySelector(
     `[data-logout-time="${selectedMinutes}"]`
+  );
+  if (selectedTile) {
+    selectedTile.classList.remove("border-gray-200", "dark:border-gray-700");
+    selectedTile.classList.add(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
+  }
+}
+
+/**
+ * Set clipboard clear time and update settings
+ */
+function setClipboardClearTime(minutes) {
+  // Update settings in decrypted data if available
+  if (state.decryptedData && state.decryptedData.settings) {
+    state.decryptedData.settings.clipboardClearMinutes = minutes;
+    saveData();
+  }
+
+  // Also save to localStorage for immediate availability
+  try {
+    localStorage.setItem("clipboardClearMinutes", minutes.toString());
+  } catch (_) {}
+
+  // Show toast feedback
+  const label =
+    minutes === 0
+      ? "Auto clipboard clearing disabled"
+      : `Auto clipboard clearing set to ${minutes} minute${
+          minutes === 1 ? "" : "s"
+        }`;
+  showToast(label, "success");
+}
+
+/**
+ * Update clipboard clear selection without re-rendering the entire form
+ */
+function updateClipboardClearSelection(selectedMinutes) {
+  const grid = document.getElementById("clipboard-clear-grid");
+  if (!grid) return;
+
+  // Remove selection from all tiles
+  grid.querySelectorAll("[data-clipboard-time]").forEach((tile) => {
+    tile.classList.remove(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
+    tile.classList.add("border-gray-200", "dark:border-gray-700");
+  });
+
+  // Add selection to the chosen tile
+  const selectedTile = grid.querySelector(
+    `[data-clipboard-time="${selectedMinutes}"]`
+  );
+  if (selectedTile) {
+    selectedTile.classList.remove("border-gray-200", "dark:border-gray-700");
+    selectedTile.classList.add(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
+  }
+}
+
+/**
+ * Set auto lock on refresh setting and update settings
+ */
+function setAutoLockOnRefresh(enabled) {
+  // Update settings in decrypted data if available
+  if (state.decryptedData && state.decryptedData.settings) {
+    state.decryptedData.settings.autoLockOnRefresh = enabled;
+    saveData();
+  }
+
+  // Also save to localStorage for immediate availability
+  try {
+    localStorage.setItem("autoLockOnRefresh", enabled.toString());
+  } catch (_) {}
+
+  // Handle sessionStorage based on setting
+  if (enabled) {
+    // Auto lock on refresh enabled, remove stored password
+    try {
+      sessionStorage.removeItem("tempMasterPassword");
+    } catch (_) {}
+  } else {
+    // Auto lock on refresh disabled, store current password if unlocked
+    if (!state.isLocked && state.masterPassword) {
+      try {
+        sessionStorage.setItem("tempMasterPassword", state.masterPassword);
+      } catch (_) {}
+    }
+  }
+
+  // Show toast feedback
+  const label = enabled
+    ? "Auto lock on refresh enabled"
+    : "Auto lock on refresh disabled";
+  showToast(label, "success");
+}
+
+/**
+ * Update auto lock on refresh selection without re-rendering the entire form
+ */
+function updateAutoLockRefreshSelection(selectedEnabled) {
+  const grid = document.getElementById("auto-lock-refresh-grid");
+  if (!grid) return;
+
+  // Remove selection from all tiles
+  grid.querySelectorAll("[data-refresh-lock]").forEach((tile) => {
+    tile.classList.remove(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
+    tile.classList.add("border-gray-200", "dark:border-gray-700");
+  });
+
+  // Add selection to the chosen tile
+  const selectedTile = grid.querySelector(
+    `[data-refresh-lock="${selectedEnabled}"]`
   );
   if (selectedTile) {
     selectedTile.classList.remove("border-gray-200", "dark:border-gray-700");
@@ -3688,6 +4143,12 @@ function setupEventListeners() {
     try {
       localStorage.setItem("vaultLockReason", "manual");
     } catch (_) {}
+
+    // Clear session password since user manually locked
+    try {
+      sessionStorage.removeItem("tempMasterPassword");
+    } catch (_) {}
+
     render();
   });
 
@@ -4020,11 +4481,22 @@ function handleMasterPasswordSubmit(e) {
       state.lockedDueToInactivity = false;
       state.lockedDueToRefresh = false;
       state.lockedDueToManual = false;
+
       // Mark that vault was unlocked this session (so a hard refresh can show banner)
       try {
         localStorage.setItem("vaultWasUnlocked", "1");
         localStorage.removeItem("vaultLockReason");
       } catch (_) {}
+
+      // Store password in sessionStorage if auto lock on refresh is disabled
+      const autoLockOnRefresh =
+        decryptedData.settings?.autoLockOnRefresh ?? true;
+      if (!autoLockOnRefresh) {
+        try {
+          sessionStorage.setItem("tempMasterPassword", password);
+        } catch (_) {}
+      }
+
       loadViewState();
       render();
     } else {
@@ -4229,10 +4701,21 @@ function handleMasterPasswordSubmit(e) {
     state.lockedDueToInactivity = false;
     state.lockedDueToRefresh = false;
     state.lockedDueToManual = false;
+
     try {
       localStorage.setItem("vaultWasUnlocked", "1");
       localStorage.removeItem("vaultLockReason");
     } catch (_) {}
+
+    // Store password in sessionStorage if auto lock on refresh is disabled
+    // For new vaults, default is true (enabled), but store anyway if changed
+    const autoLockOnRefresh =
+      state.decryptedData.settings?.autoLockOnRefresh ?? true;
+    if (!autoLockOnRefresh) {
+      try {
+        sessionStorage.setItem("tempMasterPassword", password);
+      } catch (_) {}
+    }
 
     saveData();
     render();
