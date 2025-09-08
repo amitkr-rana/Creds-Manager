@@ -2777,6 +2777,9 @@ function handleProfileSubmit(e) {
       profileIcon.classList.add("error-red");
     }
 
+    // Turn favicon red during error
+    updateFaviconColor("error");
+
     // Turn scroll to top button red
     const backToTopBtn = document.getElementById("back-to-top-btn");
     if (backToTopBtn) {
@@ -2846,6 +2849,9 @@ function handleProfileSubmit(e) {
       if (profileIcon) {
         profileIcon.classList.remove("error-red");
       }
+
+      // Reset favicon to normal
+      updateFaviconColor("normal");
 
       // Remove red styling from scroll to top button
       const backToTopBtn = document.getElementById("back-to-top-btn");
