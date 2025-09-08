@@ -64,7 +64,17 @@ const SPECIAL_CATEGORIES = {
 
 // Auto-logout timer
 let autoLogoutTimer = null;
-const AUTO_LOGOUT_DELAY = 60000; // 1 minute
+const AUTO_LOGOUT_DELAY = 60000; // 1 minute (default)
+
+// Auto logout time options (in minutes)
+// Auto logout time options (in minutes) - ordered array to ensure correct display order
+const AUTO_LOGOUT_OPTIONS = [
+  { key: 1, label: "1 min", value: 1 },
+  { key: 3, label: "3 min", value: 3 },
+  { key: 5, label: "5 min", value: 5 },
+  { key: 10, label: "10 min", value: 10 },
+  { key: 0, label: "Disabled", value: 0 },
+];
 
 // Password history storage
 let passwordHistory = JSON.parse(
@@ -328,6 +338,17 @@ function resetAutoLogoutTimer() {
     clearTimeout(autoLogoutTimer);
   }
   if (!state.isLocked) {
+    // Get auto logout setting from user settings or default to 1 minute
+    const autoLogoutMinutes =
+      state.decryptedData?.settings?.autoLogoutMinutes ??
+      localStorage.getItem("autoLogoutMinutes") ??
+      1;
+
+    // If disabled (0), don't set timer
+    if (autoLogoutMinutes === 0 || autoLogoutMinutes === "0") {
+      return;
+    }
+
     autoLogoutTimer = setTimeout(() => {
       state.isLocked = true;
       // Close any open modals when locking for security (import/export, verification, etc.)
@@ -347,7 +368,7 @@ function resetAutoLogoutTimer() {
         localStorage.setItem("vaultLockReason", "inactivity");
       } catch (_) {}
       render();
-    }, AUTO_LOGOUT_DELAY);
+    }, parseInt(autoLogoutMinutes) * 60000); // Convert minutes to milliseconds
   }
 }
 try {
@@ -443,6 +464,7 @@ function initializeDefaultData() {
       includeLowercase: true,
       accentTheme: "indigo", // new accent (primary) color theme key
       accentCustomBase: null, // base hex when using custom
+      autoLogoutMinutes: 1, // auto logout time in minutes (0 = disabled)
     },
   };
 }
@@ -1599,12 +1621,18 @@ function updateAutoLockFooter() {
   const footerText = domElements.autoLockFooterText;
   if (!footerText) return;
 
-  const autoLockMinutes = 1; // Default to 1 minute
+  // Get auto logout setting from user settings or default to 1 minute
+  const autoLogoutMinutes = parseInt(
+    state.decryptedData?.settings?.autoLogoutMinutes ??
+      localStorage.getItem("autoLogoutMinutes") ??
+      1
+  );
+
   const label =
-    autoLockMinutes === 0
+    autoLogoutMinutes === 0
       ? "Auto-Lock disabled"
-      : `Auto-lock after ${autoLockMinutes} min${
-          autoLockMinutes === 1 ? "" : "s"
+      : `Auto-lock after ${autoLogoutMinutes} min${
+          autoLogoutMinutes === 1 ? "" : "s"
         } of inactivity`;
   footerText.textContent = label;
 }
@@ -2339,6 +2367,13 @@ function renderProfileSettings() {
             <div id="accent-theme-grid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3"></div>
           </div>
 
+          <!-- Auto Logout Timer -->
+          <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="auto-logout-section">
+            <h3 class="text-lg font-semibold">Auto Logout</h3>
+            <p class="text-xs text-gray-600 dark:text-gray-400">Automatically lock the vault after a period of inactivity for security.</p>
+            <div id="auto-logout-grid" class="grid grid-cols-5 gap-3"></div>
+          </div>
+
                     <button type="submit" class="w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500">
                         Save Profile
                     </button>
@@ -2468,6 +2503,46 @@ function renderProfileSettings() {
     });
   }
 
+  // Build auto logout grid
+  const autoLogoutGrid = document.getElementById("auto-logout-grid");
+  if (autoLogoutGrid) {
+    const currentAutoLogout = parseInt(
+      state.decryptedData?.settings?.autoLogoutMinutes ??
+        localStorage.getItem("autoLogoutMinutes") ??
+        1
+    );
+
+    let autoLogoutHtml = AUTO_LOGOUT_OPTIONS.map((option) => {
+      const isActive = option.key === currentAutoLogout;
+      return `<button type="button" data-logout-time="${
+        option.key
+      }" class="flex flex-col items-center justify-center gap-1 p-3 rounded-lg border ${
+        isActive
+          ? "ring-2 ring-offset-2 ring-primary-500 dark:ring-offset-gray-800 border-primary-400 dark:border-primary-500"
+          : "border-gray-200 dark:border-gray-700"
+      } bg-white dark:bg-gray-700 hover:shadow transition-all focus:outline-none">
+          <span class="text-[11px] font-medium text-gray-600 dark:text-gray-300">${
+            option.label
+          }</span>
+        </button>`;
+    }).join("");
+
+    autoLogoutGrid.innerHTML = autoLogoutHtml;
+
+    // Add click handlers for auto logout options
+    autoLogoutGrid
+      .querySelectorAll("button[data-logout-time]")
+      .forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          const minutes = parseInt(
+            e.currentTarget.getAttribute("data-logout-time")
+          );
+          setAutoLogoutTime(minutes);
+          updateAutoLogoutSelection(minutes);
+        });
+      });
+  }
+
   // Auto-focus logic for profile section
   setTimeout(() => {
     const nameField = document.getElementById("profile-name");
@@ -2497,13 +2572,95 @@ function updateAccentThemeSelection(selectedKey) {
 
   // Remove selection from all tiles
   grid.querySelectorAll("[data-accent]").forEach((tile) => {
-    tile.classList.remove("ring-2", "ring-primary-500", "ring-offset-2");
+    tile.classList.remove(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
+    tile.classList.add("border-gray-200", "dark:border-gray-700");
   });
 
   // Add selection to the chosen tile
   const selectedTile = grid.querySelector(`[data-accent="${selectedKey}"]`);
   if (selectedTile) {
-    selectedTile.classList.add("ring-2", "ring-primary-500", "ring-offset-2");
+    selectedTile.classList.remove("border-gray-200", "dark:border-gray-700");
+    selectedTile.classList.add(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
+  }
+}
+
+/**
+ * Set auto logout time and update settings
+ */
+function setAutoLogoutTime(minutes) {
+  // Update settings in decrypted data if available
+  if (state.decryptedData && state.decryptedData.settings) {
+    state.decryptedData.settings.autoLogoutMinutes = minutes;
+    saveData();
+  }
+
+  // Also save to localStorage for immediate availability
+  try {
+    localStorage.setItem("autoLogoutMinutes", minutes.toString());
+  } catch (_) {}
+
+  // Reset the timer with new duration
+  resetAutoLogoutTimer();
+
+  // Update footer text
+  updateAutoLockFooter();
+
+  // Show toast feedback
+  const label =
+    minutes === 0
+      ? "Auto-logout disabled"
+      : `Auto-logout set to ${minutes} minute${minutes === 1 ? "" : "s"}`;
+  showToast(label, "success");
+}
+
+/**
+ * Update auto logout selection without re-rendering the entire form
+ */
+function updateAutoLogoutSelection(selectedMinutes) {
+  const grid = document.getElementById("auto-logout-grid");
+  if (!grid) return;
+
+  // Remove selection from all tiles
+  grid.querySelectorAll("[data-logout-time]").forEach((tile) => {
+    tile.classList.remove(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
+    tile.classList.add("border-gray-200", "dark:border-gray-700");
+  });
+
+  // Add selection to the chosen tile
+  const selectedTile = grid.querySelector(
+    `[data-logout-time="${selectedMinutes}"]`
+  );
+  if (selectedTile) {
+    selectedTile.classList.remove("border-gray-200", "dark:border-gray-700");
+    selectedTile.classList.add(
+      "ring-2",
+      "ring-primary-500",
+      "ring-offset-2",
+      "dark:ring-offset-gray-800",
+      "border-primary-400",
+      "dark:border-primary-500"
+    );
   }
 }
 
