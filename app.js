@@ -101,7 +101,8 @@ let breachProtection = {
   lastKnownHash: null,
   monitoringInterval: null,
   breachDetected: false,
-  recoveryData: null
+  recoveryData: null,
+  preventRefresh: false
 };
 
 // Create a checksum of critical vault data
@@ -114,6 +115,100 @@ function createVaultChecksum(vaultData) {
     console.error("Failed to create vault checksum:", error);
     return null;
   }
+}
+
+// Prevent page refresh during security breach
+function enableRefreshPrevention() {
+  if (breachProtection.preventRefresh) return;
+  
+  breachProtection.preventRefresh = true;
+  console.log("Refresh prevention enabled");
+  
+  // Prevent refresh with beforeunload event
+  window.addEventListener('beforeunload', handleBeforeUnload);
+  
+  // Prevent F5, Ctrl+R, Ctrl+F5 key combinations
+  document.addEventListener('keydown', handleKeyDown);
+}
+
+function disableRefreshPrevention() {
+  if (!breachProtection.preventRefresh) return;
+  
+  breachProtection.preventRefresh = false;
+  console.log("Refresh prevention disabled");
+  
+  // Remove event listeners
+  window.removeEventListener('beforeunload', handleBeforeUnload);
+  document.removeEventListener('keydown', handleKeyDown);
+}
+
+function handleBeforeUnload(event) {
+  if (breachProtection.preventRefresh && breachProtection.breachDetected) {
+    const message = "Security breach detected! Please select 'Recover' or 'Dismiss' before leaving the page.";
+    event.preventDefault();
+    event.returnValue = message; // For older browsers
+    return message;
+  }
+}
+
+function handleKeyDown(event) {
+  if (!breachProtection.preventRefresh || !breachProtection.breachDetected) return;
+  
+  // Prevent F5, Ctrl+R, Ctrl+F5, Cmd+R
+  if (event.key === 'F5' || 
+      (event.ctrlKey && event.key === 'r') || 
+      (event.ctrlKey && event.key === 'R') ||
+      (event.metaKey && event.key === 'r') ||
+      (event.metaKey && event.key === 'R')) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Show a brief notification
+    showRefreshBlockedNotification();
+    return false;
+  }
+}
+
+function showRefreshBlockedNotification() {
+  // Create a temporary notification
+  const notification = document.createElement('div');
+  notification.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--primary-600);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 10001;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    animation: slideIn 0.3s ease-out;
+  `;
+  notification.textContent = "Page refresh blocked during security breach";
+  
+  // Add animation keyframes if not already present
+  if (!document.querySelector('#refresh-block-animation')) {
+    const style = document.createElement('style');
+    style.id = 'refresh-block-animation';
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  document.body.appendChild(notification);
+  
+  // Remove after 3 seconds
+  setTimeout(() => {
+    if (notification.parentNode) {
+      notification.style.animation = 'slideIn 0.3s ease-out reverse';
+      setTimeout(() => notification.remove(), 300);
+    }
+  }, 3000);
 }
 
 // Initialize breach protection system
@@ -292,6 +387,9 @@ function triggerBreachAlert(type, message) {
   if (breachProtection.monitoringInterval) {
     clearInterval(breachProtection.monitoringInterval);
   }
+  
+  // Enable refresh prevention during breach
+  enableRefreshPrevention();
   
   // Show breach notification banner
   showBreachBanner(type, message);
@@ -704,6 +802,9 @@ function showBreachBanner(type, message) {
       
       setTimeout(() => {
         if (recoverVaultData()) {
+          // Disable refresh prevention since user made a choice
+          disableRefreshPrevention();
+          
           overlay.remove();
           
           // Lock vault for security verification after recovery
@@ -752,6 +853,9 @@ function showBreachBanner(type, message) {
               Accept & Create New Vault
             `;
             recoverBtn.onclick = () => {
+              // Disable refresh prevention since user made a choice
+              disableRefreshPrevention();
+              
               // Same as dismiss button - clear data and go to creation
               overlay.remove();
               localStorage.removeItem("vaultData");
@@ -845,6 +949,9 @@ function showBreachBanner(type, message) {
     overlay.style.backdropFilter = "blur(0px)";
     
     setTimeout(() => {
+      // Disable refresh prevention since user made a choice
+      disableRefreshPrevention();
+      
       overlay.remove();
       
       // Clear vault data due to security breach
@@ -4910,6 +5017,9 @@ function lockVault(reason = "manual") {
     breachProtection.vaultBackup = null;
     breachProtection.lastKnownHash = null;
     breachProtection.recoveryData = null;
+    
+    // Disable refresh prevention
+    disableRefreshPrevention();
     
     if (breachProtection.monitoringInterval) {
       clearInterval(breachProtection.monitoringInterval);
