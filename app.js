@@ -90,6 +90,271 @@ let passwordHistory = JSON.parse(
   localStorage.getItem("passwordHistory") || "[]"
 );
 
+// ========================================
+// BREACH PROTECTION SYSTEM
+// ========================================
+
+// Breach detection state
+let breachProtection = {
+  isActive: false,
+  vaultBackup: null,
+  lastKnownHash: null,
+  monitoringInterval: null,
+  breachDetected: false,
+  recoveryData: null
+};
+
+// Create a checksum of critical vault data
+function createVaultChecksum(vaultData) {
+  if (!vaultData) return null;
+  try {
+    const dataString = JSON.stringify(vaultData);
+    return CryptoJS.SHA256(dataString).toString();
+  } catch (error) {
+    console.error("Failed to create vault checksum:", error);
+    return null;
+  }
+}
+
+// Initialize breach protection system
+function initializeBreachProtection() {
+  if (breachProtection.isActive) return;
+  
+  breachProtection.isActive = true;
+  console.log("Breach protection system initialized");
+  
+  // Start monitoring storage for breaches
+  startStorageMonitoring();
+  
+  // Listen for storage events from other tabs/windows
+  window.addEventListener('storage', handleStorageEvent);
+  
+  // Monitor for DevTools usage (page visibility changes can indicate DevTools opening)
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  
+  // Monitor for storage events that might indicate clearing
+  window.addEventListener('beforeunload', () => {
+    // Store a sentinel value to detect if storage was cleared
+    try {
+      sessionStorage.setItem('__vault_sentinel__', Date.now().toString());
+    } catch (_) {}
+  });
+  
+  // Check for storage integrity on focus/visibility restore
+  window.addEventListener('focus', () => {
+    if (!state.isLocked) {
+      setTimeout(detectStorageBreach, 100); // Small delay to let any storage operations complete
+    }
+  });
+}
+
+// Handle page visibility changes (can indicate DevTools usage)
+function handleVisibilityChange() {
+  if (state.isLocked) return;
+  
+  // Check storage integrity when page becomes visible again
+  if (!document.hidden) {
+    setTimeout(() => {
+      detectStorageBreach();
+      
+      // Check if our sentinel value is missing (could indicate storage clearing)
+      try {
+        const sentinel = sessionStorage.getItem('__vault_sentinel__');
+        if (!sentinel && !state.isLocked) {
+          // If sentinel is missing but we're unlocked, storage might have been cleared
+          detectStorageBreach();
+        }
+      } catch (_) {}
+    }, 200);
+  }
+}
+
+// Monitor localStorage for unauthorized changes
+function startStorageMonitoring() {
+  if (breachProtection.monitoringInterval) {
+    clearInterval(breachProtection.monitoringInterval);
+  }
+  
+  breachProtection.monitoringInterval = setInterval(() => {
+    detectStorageBreach();
+  }, 333); // Check thrice every second (every 333ms)
+}
+
+// Create encrypted backup of current vault state
+function createVaultBackup() {
+  if (!state.decryptedData || !state.masterPassword) return;
+  
+  try {
+    const backupData = {
+      timestamp: Date.now(),
+      vaultData: state.decryptedData,
+      checksum: createVaultChecksum(state.decryptedData)
+    };
+    
+    breachProtection.vaultBackup = encrypt(JSON.stringify(backupData), state.masterPassword);
+    breachProtection.lastKnownHash = backupData.checksum;
+    
+    // Store backup in a different storage location
+    sessionStorage.setItem('vaultBackup', breachProtection.vaultBackup);
+    console.log("Vault backup created successfully");
+  } catch (error) {
+    console.error("Failed to create vault backup:", error);
+  }
+}
+
+// Detect if storage has been compromised
+function detectStorageBreach() {
+  if (state.isLocked) return; // Don't check when vault is locked
+  
+  try {
+    const currentVaultData = localStorage.getItem("vaultData");
+    const expectedVault = state.decryptedData;
+    const sessionBackup = sessionStorage.getItem('vaultBackup');
+    
+    // Check for complete storage wipe (DevTools "Clear storage" / "Clear all")
+    if (!currentVaultData && !sessionBackup && expectedVault) {
+      triggerBreachAlert("complete_storage_wipe", "All browser storage has been cleared");
+      return;
+    }
+    
+    // Check if vault data was deleted but session backup still exists
+    if (!currentVaultData && sessionBackup && expectedVault) {
+      triggerBreachAlert("critical_data_deletion", "Vault data has been deleted from browser storage");
+      return;
+    }
+    
+    // Check if vault data was corrupted/tampered
+    if (currentVaultData && expectedVault) {
+      const decryptedCurrent = decrypt(currentVaultData, state.masterPassword);
+      if (!decryptedCurrent) {
+        triggerBreachAlert("data_corruption", "Vault data appears to be corrupted or tampered with");
+        return;
+      }
+      
+      const currentHash = createVaultChecksum(decryptedCurrent);
+      if (breachProtection.lastKnownHash && currentHash !== breachProtection.lastKnownHash) {
+        // Data has changed without user action - potential breach
+        if (!isUserActionInProgress()) {
+          triggerBreachAlert("unauthorized_modification", "Vault data has been modified without authorization");
+          return;
+        }
+      }
+    }
+    
+    // Check for storage access issues (quota exceeded, etc.)
+    try {
+      localStorage.setItem('__breach_test__', 'test');
+      localStorage.removeItem('__breach_test__');
+    } catch (storageError) {
+      triggerBreachAlert("storage_access_denied", "Browser storage access has been restricted or quota exceeded");
+      return;
+    }
+    
+  } catch (error) {
+    console.error("Breach detection error:", error);
+    // If we can't even access storage APIs, that's a serious issue
+    triggerBreachAlert("storage_api_failure", "Storage monitoring system has been compromised or blocked");
+  }
+}
+
+// Handle storage events from other tabs/windows
+function handleStorageEvent(event) {
+  if (state.isLocked) return;
+  
+  if (event.key === 'vaultData') {
+    if (event.newValue === null) {
+      // Vault data was deleted in another tab
+      triggerBreachAlert("external_deletion", "Vault data was deleted in another browser tab");
+    } else if (event.oldValue && event.newValue && event.oldValue !== event.newValue) {
+      // Vault data was modified in another tab without proper sync
+      triggerBreachAlert("external_modification", "Vault data was modified in another browser tab");
+    }
+  }
+}
+
+// Check if user is currently performing an action that would modify data
+function isUserActionInProgress() {
+  // Check if any modals are open, forms being submitted, etc.
+  const activeModals = document.querySelectorAll('[id$="-modal"]:not(.hidden)');
+  const activeInputs = document.querySelectorAll('input:focus, textarea:focus');
+  
+  return activeModals.length > 0 || activeInputs.length > 0;
+}
+
+// Trigger breach alert and show banner
+function triggerBreachAlert(type, message) {
+  if (breachProtection.breachDetected) return; // Prevent multiple alerts
+  
+  breachProtection.breachDetected = true;
+  console.warn("SECURITY BREACH DETECTED:", type, message);
+  
+  // Stop monitoring to prevent cascade of alerts
+  if (breachProtection.monitoringInterval) {
+    clearInterval(breachProtection.monitoringInterval);
+  }
+  
+  // Show breach notification banner
+  showBreachBanner(type, message);
+  
+  // No auto-lock - let user decide the action
+}
+
+// Attempt to recover vault data from backup
+function recoverVaultData() {
+  try {
+    // Try sessionStorage backup first
+    let backupEncrypted = sessionStorage.getItem('vaultBackup');
+    let backupSource = "sessionStorage";
+    
+    // If sessionStorage backup is missing (DevTools cleared all storage), 
+    // try to recover from memory if vault is still unlocked
+    if (!backupEncrypted && state.decryptedData && state.masterPassword) {
+      console.log("SessionStorage backup missing, attempting memory recovery");
+      
+      // Recreate backup from current memory state
+      const memoryBackupData = {
+        timestamp: Date.now(),
+        vaultData: state.decryptedData,
+        checksum: createVaultChecksum(state.decryptedData)
+      };
+      
+      backupEncrypted = encrypt(JSON.stringify(memoryBackupData), state.masterPassword);
+      backupSource = "memory";
+    }
+    
+    if (!backupEncrypted || !state.masterPassword) {
+      throw new Error("No backup available and vault not unlocked");
+    }
+    
+    const backupDecrypted = decrypt(backupEncrypted, state.masterPassword);
+    if (!backupDecrypted) {
+      throw new Error("Failed to decrypt backup data");
+    }
+    
+    const backupData = JSON.parse(backupDecrypted);
+    
+    // Verify backup integrity
+    const backupChecksum = createVaultChecksum(backupData.vaultData);
+    if (backupChecksum !== backupData.checksum) {
+      throw new Error("Backup data integrity check failed");
+    }
+    
+    // Restore data
+    state.decryptedData = backupData.vaultData;
+    saveData();
+    
+    // Update our monitoring hash
+    breachProtection.lastKnownHash = backupData.checksum;
+    
+    console.log(`Vault data recovered successfully from ${backupSource}`);
+    return true;
+    
+  } catch (error) {
+    console.error("Failed to recover vault data:", error);
+    return false;
+  }
+}
+
 // Enhanced toast system (app view only; lock screen banners remain unchanged)
 function showToast(message, type = "info", timeout = 2200) {
   try {
@@ -270,6 +535,542 @@ function showToast(message, type = "info", timeout = 2200) {
     });
   } catch (err) {
     console.log(message);
+  }
+}
+
+/**
+ * Show breach protection banner as full-screen overlay
+ */
+function showBreachBanner(type, message) {
+  // Remove any existing breach banner
+  const existingBanner = document.getElementById("breach-banner");
+  if (existingBanner) {
+    existingBanner.remove();
+  }
+
+  // Create full-screen overlay backdrop
+  const overlay = document.createElement("div");
+  overlay.id = "breach-banner";
+  overlay.setAttribute("role", "alert");
+  overlay.setAttribute("aria-live", "assertive");
+  
+  // Apply theme-aware full-screen overlay styling
+  overlay.className = "fixed inset-0 z-[10000] flex items-center justify-center p-4";
+  Object.assign(overlay.style, {
+    background: "rgba(0, 0, 0, 0.8)",
+    backdropFilter: "saturate(120%) blur(8px)",
+    WebkitBackdropFilter: "saturate(120%) blur(8px)",
+    fontFamily: "Inter, system-ui, sans-serif",
+  });
+
+  // Create the main banner card
+  const banner = document.createElement("div");
+  banner.className = "w-full max-w-2xl";
+  
+  // Apply glassmorphic card styling following the inactivity banner pattern
+  Object.assign(banner.style, {
+    position: "relative",
+    background: "rgba(239, 68, 68, 0.15)", // Transparent red like inactivity banner
+    border: "1px solid rgba(239, 68, 68, 0.4)",
+    borderRadius: "1rem",
+    padding: "2rem",
+    boxShadow: `
+      0 20px 25px -5px rgba(0, 0, 0, 0.3),
+      0 10px 10px -5px rgba(0, 0, 0, 0.15)
+    `,
+    backdropFilter: "saturate(120%) blur(8px)",
+    WebkitBackdropFilter: "saturate(120%) blur(8px)",
+    color: "#dc2626" // Red-600 for light mode text
+  });
+
+  // Add glassmorphic reflection effect (more subtle for transparent design)
+  const reflection = document.createElement("div");
+  Object.assign(reflection.style, {
+    position: "absolute",
+    inset: "0",
+    borderRadius: "inherit",
+    background: "linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 20%, rgba(255,255,255,0) 45%)",
+    pointerEvents: "none"
+  });
+  banner.appendChild(reflection);
+
+  // Content container
+  const content = document.createElement("div");
+  content.style.position = "relative";
+  content.style.zIndex = "1";
+
+  // Header section - centered without icon
+  const header = document.createElement("div");
+  header.className = "text-center mb-6";
+  
+  const title = document.createElement("h2");
+  title.className = "text-3xl font-bold mb-2";
+  title.textContent = "Security Breach Detected"; // Removed shield emoji
+  title.style.color = "#ffffff"; // White text for visibility on red background
+  
+  const subtitle = document.createElement("p");
+  subtitle.className = "text-lg mb-3";
+  subtitle.style.color = "#fef2f2"; // Red-50 - very light red/white for visibility
+  subtitle.style.opacity = "0.9";
+  subtitle.textContent = "Unauthorized access to your vault data";
+  
+  const waitingText = document.createElement("p");
+  waitingText.className = "text-sm";
+  waitingText.style.color = "#fecaca"; // Red-200 - light red for subtle text
+  waitingText.style.opacity = "0.85";
+  waitingText.style.fontStyle = "italic";
+  waitingText.textContent = "Please review the details below and choose an action to continue.";
+  
+  header.appendChild(title);
+  header.appendChild(subtitle);
+  header.appendChild(waitingText);
+
+  // Message section with better contrast for transparent design
+  const messageSection = document.createElement("div");
+  messageSection.className = "mb-8";
+  Object.assign(messageSection.style, {
+    background: "rgba(255, 255, 255, 0.2)",
+    border: "1px solid rgba(239, 68, 68, 0.3)",
+    borderRadius: "0.75rem",
+    padding: "1.5rem",
+    backdropFilter: "blur(4px)"
+  });
+
+  const messageTitle = document.createElement("h3");
+  messageTitle.className = "text-lg font-semibold mb-2";
+  messageTitle.textContent = "Threat Details";
+  messageTitle.style.color = "#ffffff"; // White for visibility
+  
+  const messageText = document.createElement("p");
+  messageText.className = "text-base leading-relaxed";
+  messageText.style.color = "#fef2f2"; // Red-50 - very light for readability
+  messageText.style.opacity = "0.95";
+  messageText.textContent = message;
+  
+  messageSection.appendChild(messageTitle);
+  messageSection.appendChild(messageText);
+
+  // Actions section
+  const actionsSection = document.createElement("div");
+  actionsSection.className = "flex flex-wrap gap-3 justify-center";
+
+  // Recover button for data loss/corruption/complete wipe
+  if (type === "critical_data_deletion" || type === "data_corruption" || type === "complete_storage_wipe") {
+    const recoverBtn = document.createElement("button");
+    recoverBtn.className = "px-6 py-3 font-semibold rounded-lg transition-all duration-200 flex items-center gap-2";
+    Object.assign(recoverBtn.style, {
+      background: "rgba(16, 185, 129, 0.15)",
+      border: "2px solid rgba(16, 185, 129, 0.6)",
+      color: "#059669", // Emerald-600
+      backdropFilter: "blur(4px)",
+      boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)"
+    });
+    
+    recoverBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+        <path d="M21 3v5h-5"/>
+        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+        <path d="M8 16H3v5"/>
+      </svg>
+      Initiate Recovery
+    `;
+    
+    recoverBtn.addEventListener("mouseenter", () => {
+      recoverBtn.style.transform = "translateY(-2px)";
+      recoverBtn.style.background = "rgba(16, 185, 129, 0.25)";
+      recoverBtn.style.borderColor = "rgba(16, 185, 129, 0.8)";
+      recoverBtn.style.boxShadow = "0 8px 20px rgba(16, 185, 129, 0.3)";
+    });
+    
+    recoverBtn.addEventListener("mouseleave", () => {
+      recoverBtn.style.transform = "translateY(0)";
+      recoverBtn.style.background = "rgba(16, 185, 129, 0.15)";
+      recoverBtn.style.borderColor = "rgba(16, 185, 129, 0.6)";
+      recoverBtn.style.boxShadow = "0 4px 12px rgba(16, 185, 129, 0.2)";
+    });
+    
+    recoverBtn.addEventListener("click", () => {
+      // Disable button during recovery attempt
+      recoverBtn.disabled = true;
+      recoverBtn.style.opacity = "0.6";
+      recoverBtn.innerHTML = `
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+          <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        Recovering...
+      `;
+      
+      setTimeout(() => {
+        if (recoverVaultData()) {
+          overlay.remove();
+          
+          // Lock vault for security verification after recovery
+          lockVault("recovery_verification");
+          
+          // Store recovery success message for persistence across refreshes
+          try {
+            localStorage.setItem("lockScreenMessage", JSON.stringify({
+              type: "recovery_success",
+              message: "Recovery successful! Verify your identity to access your restored vault.",
+              timestamp: Date.now()
+            }));
+          } catch (_) {}
+          
+          // Show verification message on lock screen
+          setTimeout(() => {
+            showLockScreenMessage();
+          }, 500);
+        } else {
+          // Recovery failed - show better error and option to dismiss
+          recoverBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="15" y1="9" x2="9" y2="15"/>
+              <line x1="9" y1="9" x2="15" y2="15"/>
+            </svg>
+            Recovery Failed
+          `;
+          recoverBtn.style.background = "rgba(239, 68, 68, 0.15)";
+          recoverBtn.style.borderColor = "rgba(239, 68, 68, 0.6)";
+          recoverBtn.style.color = "#dc2626";
+          
+          // Add explanation text
+          const errorText = document.createElement("p");
+          errorText.className = "text-sm mt-4 text-center";
+          errorText.style.color = "#fecaca";
+          errorText.textContent = "Unable to recover data - all storage was cleared. You'll need to create a new vault.";
+          messageSection.appendChild(errorText);
+          
+          // Change to "Create New Vault" after 2 seconds
+          setTimeout(() => {
+            recoverBtn.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6 9 17l-5-5"/>
+              </svg>
+              Accept & Create New Vault
+            `;
+            recoverBtn.onclick = () => {
+              // Same as dismiss button - clear data and go to creation
+              overlay.remove();
+              localStorage.removeItem("vaultData");
+              localStorage.removeItem("vaultViewState");
+              localStorage.removeItem("passwordHistory");
+              lockVault("security_breach");
+              
+              setTimeout(() => {
+                const passwordError = document.getElementById("password-error");
+                if (passwordError) {
+                  passwordError.innerHTML = `
+                    <div id="security-breach-banner" class="mt-3 px-3 py-2 rounded-md text-sm border text-center" style="
+                      position: relative;
+                      background-color: rgb(from var(--primary-600) r g b / 0.12) !important;
+                      border-color: rgb(from var(--primary-600) r g b / 0.35) !important;
+                      color: var(--primary-700) !important;
+                      backdrop-filter: saturate(120%) blur(6px);
+                      -webkit-backdrop-filter: saturate(120%) blur(6px);
+                      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+                    ">
+                      Due to the security breach, your vault data has been cleared for safety. Please create a new vault to continue.
+                    </div>
+                  `;
+                  
+                  // Apply theme-appropriate styling
+                  if (document.documentElement.classList.contains('dark')) {
+                    const banner = document.getElementById('security-breach-banner');
+                    if (banner) {
+                      banner.style.setProperty('background-color', 'rgb(from var(--primary-700) r g b / 0.25)', 'important');
+                      banner.style.setProperty('border-color', 'rgb(from var(--primary-600) r g b / 0.5)', 'important');
+                      banner.style.setProperty('color', '#ffffff', 'important');
+                      banner.style.setProperty('box-shadow', '0 6px 20px rgba(0,0,0,0.25)', 'important');
+                    }
+                  } else {
+                    const banner = document.getElementById('security-breach-banner');
+                    if (banner) {
+                      banner.style.setProperty('color', 'var(--primary-700)', 'important');
+                    }
+                  }
+                }
+              }, 500);
+            };
+          }, 2000);
+          
+          recoverBtn.disabled = false;
+          recoverBtn.style.opacity = "1";
+        }
+      }, 800); // Small delay to show loading state
+    });
+    
+    actionsSection.appendChild(recoverBtn);
+  }
+
+  // Dismiss button
+  const dismissBtn = document.createElement("button");
+  dismissBtn.className = "px-6 py-3 font-semibold rounded-lg transition-all duration-200 flex items-center gap-2";
+  Object.assign(dismissBtn.style, {
+    background: "rgba(255, 255, 255, 0.2)", // White background with transparency
+    border: "2px solid rgba(255, 255, 255, 0.5)",
+    color: "#ffffff", // White text for visibility
+    backdropFilter: "blur(4px)",
+    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)"
+  });
+  
+  dismissBtn.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M18 6 6 18"/>
+      <path d="m6 6 12 12"/>
+    </svg>
+    Dismiss Alert
+  `;
+  
+  dismissBtn.addEventListener("mouseenter", () => {
+    dismissBtn.style.transform = "translateY(-2px)";
+    dismissBtn.style.background = "rgba(255, 255, 255, 0.3)";
+    dismissBtn.style.borderColor = "rgba(255, 255, 255, 0.7)";
+    dismissBtn.style.boxShadow = "0 8px 20px rgba(0, 0, 0, 0.3)";
+  });
+  
+  dismissBtn.addEventListener("mouseleave", () => {
+    dismissBtn.style.transform = "translateY(0)";
+    dismissBtn.style.background = "rgba(255, 255, 255, 0.2)";
+    dismissBtn.style.borderColor = "rgba(255, 255, 255, 0.5)";
+    dismissBtn.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.2)";
+  });
+  
+  dismissBtn.addEventListener("click", () => {
+    // Fade out the overlay
+    overlay.style.transition = "opacity 0.3s ease, backdrop-filter 0.3s ease";
+    overlay.style.opacity = "0";
+    overlay.style.backdropFilter = "blur(0px)";
+    
+    setTimeout(() => {
+      overlay.remove();
+      
+      // Clear vault data due to security breach
+      localStorage.removeItem("vaultData");
+      localStorage.removeItem("vaultViewState");
+      localStorage.removeItem("passwordHistory");
+      
+      // Lock the vault and reset state
+      lockVault("security_breach");
+      
+      // Store security breach message for persistence across refreshes
+      try {
+        localStorage.setItem("lockScreenMessage", JSON.stringify({
+          type: "security_breach",
+          message: "Due to the security breach, your vault data has been cleared for safety. Please create a new vault to continue.",
+          timestamp: Date.now()
+        }));
+      } catch (_) {}
+      
+      // Show security breach message on lock screen
+      setTimeout(() => {
+        showLockScreenMessage();
+      }, 500); // Show message after lock screen renders
+      
+    }, 300);
+  });
+  
+  actionsSection.appendChild(dismissBtn);
+
+  // Assemble the banner
+  content.appendChild(header);
+  content.appendChild(messageSection);  
+  content.appendChild(actionsSection);
+  banner.appendChild(content);
+  overlay.appendChild(banner);
+
+  // Add to page with animation
+  document.body.appendChild(overlay);
+  
+  // Animate in
+  overlay.style.opacity = "0";
+  overlay.style.backdropFilter = "blur(0px)";
+  banner.style.transform = "scale(0.95) translateY(20px)";
+  banner.style.transition = "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)";
+  
+  setTimeout(() => {
+    overlay.style.transition = "opacity 0.4s ease, backdrop-filter 0.4s ease";
+    overlay.style.opacity = "1";
+    overlay.style.backdropFilter = "saturate(120%) blur(8px)";
+    banner.style.transform = "scale(1) translateY(0)";
+  }, 50);
+
+  // Banner now waits for user action - no auto-dismiss
+
+  // Close on escape key
+  const handleEscape = (e) => {
+    if (e.key === 'Escape') {
+      dismissBtn.click();
+      document.removeEventListener('keydown', handleEscape);
+    }
+  };
+  document.addEventListener('keydown', handleEscape);
+}
+
+/**
+ * Show recovery success banner following design system
+ */
+function showRecoverySuccessBanner() {
+  // Create banner following the profile-complete-banner design pattern
+  const banner = document.createElement("div");
+  banner.id = "recovery-success-banner";
+  banner.setAttribute("role", "status");
+  banner.setAttribute("aria-live", "polite");
+  banner.className = "profile-complete-banner";
+  
+  Object.assign(banner.style, {
+    position: "fixed",
+    top: "1rem",
+    left: "50%",
+    transform: "translateX(-50%)",
+    width: "calc(100% - 2rem)",
+    maxWidth: "28rem",
+    zIndex: "10001",
+    borderRadius: "0.75rem",
+    padding: "1rem 1.5rem",
+    fontFamily: "Inter, system-ui, sans-serif",
+    fontSize: "0.875rem",
+    fontWeight: "500",
+    boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.25), 0 8px 16px -8px rgba(0, 0, 0, 0.3)",
+    // Override the profile banner colors for success theme
+    background: "var(--primary-50)",
+    borderColor: "rgba(16, 185, 129, 0.3)",
+    color: "rgb(22, 163, 74)"
+  });
+
+  // Dark mode override
+  const isDarkMode = document.documentElement.classList.contains('dark');
+  if (isDarkMode) {
+    Object.assign(banner.style, {
+      background: "rgba(16, 185, 129, 0.18)",
+      borderColor: "rgba(74, 222, 128, 0.35)",
+      color: "rgb(134, 239, 172)",
+      backdropFilter: "saturate(140%) blur(4px)",
+      WebkitBackdropFilter: "saturate(140%) blur(4px)"
+    });
+  }
+
+  const content = document.createElement("div");
+  content.className = "flex items-center gap-3";
+  
+  const iconContainer = document.createElement("div");
+  iconContainer.className = "flex-shrink-0";
+  iconContainer.style.color = isDarkMode ? "rgb(74, 222, 128)" : "rgb(16, 185, 129)";
+  iconContainer.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>
+      <path d="M9 12l2 2 4-4"/>
+    </svg>
+  `;
+  
+  const messageContainer = document.createElement("div");
+  messageContainer.className = "flex-1";
+  
+  const title = document.createElement("div");
+  title.className = "font-semibold";
+  title.textContent = "Recovery Successful";
+  
+  const description = document.createElement("div");
+  description.className = "text-sm opacity-90 mt-1";
+  description.textContent = "Your vault data has been restored from backup.";
+  
+  messageContainer.appendChild(title);
+  messageContainer.appendChild(description);
+  content.appendChild(iconContainer);  
+  content.appendChild(messageContainer);
+  banner.appendChild(content);
+
+  // Add to page with animation
+  document.body.appendChild(banner);
+  
+  // Animate in
+  banner.style.opacity = "0";
+  banner.style.transform = "translateX(-50%) translateY(-20px) scale(0.95)";
+  banner.style.transition = "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)";
+  
+  setTimeout(() => {
+    banner.style.opacity = "1";
+    banner.style.transform = "translateX(-50%) translateY(0) scale(1)";
+  }, 50);
+
+  // Auto-remove after 6 seconds with fade out
+  setTimeout(() => {
+    if (banner && banner.parentNode) {
+      banner.style.transition = "all 0.5s ease";
+      banner.style.opacity = "0";
+      banner.style.transform = "translateX(-50%) translateY(-10px) scale(0.98)";
+      setTimeout(() => banner.remove(), 500);
+    }
+  }, 6000);
+}
+
+/**
+ * Show persistent lock screen message
+ */
+function showLockScreenMessage() {
+  const passwordError = document.getElementById("password-error");
+  if (!passwordError) return;
+  
+  try {
+    const storedMessage = localStorage.getItem("lockScreenMessage");
+    if (!storedMessage) return;
+    
+    const messageData = JSON.parse(storedMessage);
+    const { type, message, timestamp } = messageData;
+    
+    // Check if message is too old (older than 24 hours)
+    const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    if (Date.now() - timestamp > maxAge) {
+      localStorage.removeItem("lockScreenMessage");
+      return;
+    }
+    
+    passwordError.innerHTML = `
+      <div id="persistent-lock-banner" class="mt-3 px-3 py-2 rounded-md text-sm border text-center" style="
+        position: relative;
+        background-color: rgb(from var(--primary-600) r g b / 0.12) !important;
+        border-color: rgb(from var(--primary-600) r g b / 0.35) !important;
+        color: var(--primary-700) !important;
+        backdrop-filter: saturate(120%) blur(6px);
+        -webkit-backdrop-filter: saturate(120%) blur(6px);
+        box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+      ">
+        ${message}
+      </div>
+    `;
+    
+    // Apply theme-appropriate styling
+    const banner = document.getElementById('persistent-lock-banner');
+    if (banner) {
+      if (document.documentElement.classList.contains('dark')) {
+        banner.style.setProperty('background-color', 'rgb(from var(--primary-700) r g b / 0.25)', 'important');
+        banner.style.setProperty('border-color', 'rgb(from var(--primary-600) r g b / 0.5)', 'important');
+        banner.style.setProperty('color', '#ffffff', 'important');
+        banner.style.setProperty('box-shadow', '0 6px 20px rgba(0,0,0,0.25)', 'important');
+      } else {
+        banner.style.setProperty('color', 'var(--primary-700)', 'important');
+      }
+      
+      // Add glassmorphic reflection effect
+      const reflection = document.createElement('div');
+      Object.assign(reflection.style, {
+        content: '""',
+        position: 'absolute',
+        inset: '0',
+        borderRadius: 'inherit',
+        background: document.documentElement.classList.contains('dark') 
+          ? 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.06) 20%, rgba(255,255,255,0) 45%)'
+          : 'linear-gradient(135deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 20%, rgba(255,255,255,0) 45%)',
+        pointerEvents: 'none'
+      });
+      banner.appendChild(reflection);
+    }
+    
+  } catch (error) {
+    console.error("Error showing lock screen message:", error);
+    localStorage.removeItem("lockScreenMessage");
   }
 }
 
@@ -489,36 +1290,10 @@ function resetAutoLogoutTimer() {
     }
 
     autoLogoutTimer = setTimeout(() => {
-      state.isLocked = true;
-      // Close any open modals when locking for security (import/export, verification, etc.)
-      try {
-        closeAllModals();
-      } catch (_) {}
-      state.masterPassword = null;
-      state.decryptedData = null;
-      state.selectedItemId = null;
-      state.lockedDueToInactivity = true;
-      state.lockedDueToRefresh = false;
-      try {
-        localStorage.removeItem("vaultWasUnlocked");
-      } catch (_) {}
-      state.lockedDueToManual = false;
-      try {
-        localStorage.setItem("vaultLockReason", "inactivity");
-      } catch (_) {}
-
-      // Clear session password since vault locked due to inactivity
-      try {
-        sessionStorage.removeItem("tempMasterPassword");
-      } catch (_) {}
-
-      render();
+      lockVault("inactivity");
     }, parseInt(autoLogoutMinutes) * 60000); // Convert minutes to milliseconds
   }
 }
-try {
-  closeAllModals();
-} catch (_) {}
 
 // ========================================
 // PART 3: DATA PERSISTENCE
@@ -533,6 +1308,11 @@ function saveData() {
   try {
     const encryptedData = encrypt(state.decryptedData, state.masterPassword);
     localStorage.setItem("vaultData", encryptedData);
+    
+    // Update breach protection backup and hash when data is saved
+    if (breachProtection.isActive && !state.isLocked) {
+      createVaultBackup();
+    }
   } catch (error) {
     console.error("Failed to save data:", error);
     showToast("Failed to save data", "error");
@@ -1783,6 +2563,11 @@ function setupLockScreen() {
       banner.style.display = "none";
     }
   }
+
+  // Show any persistent messages
+  setTimeout(() => {
+    showLockScreenMessage();
+  }, 100);
 }
 
 /**
@@ -1921,6 +2706,10 @@ function attemptSessionRestore() {
     state.lockedDueToInactivity = false;
     state.lockedDueToRefresh = false;
     state.lockedDueToManual = false;
+
+    // Initialize breach protection system
+    initializeBreachProtection();
+    createVaultBackup();
 
     // Load view state and render
     loadViewState();
@@ -4105,6 +4894,106 @@ window.cancelForm = function () {
   renderDetailsPane();
 };
 
+/**
+ * Lock the vault and cleanup breach protection
+ */
+function lockVault(reason = "manual") {
+  // Clear auto-logout timer
+  if (autoLogoutTimer) {
+    clearTimeout(autoLogoutTimer);
+  }
+
+  // Clear breach protection
+  if (breachProtection.isActive) {
+    breachProtection.isActive = false;
+    breachProtection.breachDetected = false;
+    breachProtection.vaultBackup = null;
+    breachProtection.lastKnownHash = null;
+    breachProtection.recoveryData = null;
+    
+    if (breachProtection.monitoringInterval) {
+      clearInterval(breachProtection.monitoringInterval);
+      breachProtection.monitoringInterval = null;
+    }
+    
+    // Remove all event listeners
+    window.removeEventListener('storage', handleStorageEvent);
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('focus', detectStorageBreach);
+    
+    // Clear backup and sentinel from session storage
+    try {
+      sessionStorage.removeItem('vaultBackup');
+      sessionStorage.removeItem('__vault_sentinel__');
+    } catch (_) {}
+    
+    console.log("Breach protection system deactivated");
+  }
+
+  // Remove any breach banners
+  const existingBanner = document.getElementById("breach-banner");
+  if (existingBanner) {
+    existingBanner.remove();
+  }
+
+  // Lock the vault state
+  state.isLocked = true;
+  state.masterPassword = null;
+  state.decryptedData = null;
+  state.selectedItemId = null;
+  
+  // Set lock reason flags
+  switch (reason) {
+    case "inactivity":
+      state.lockedDueToInactivity = true;
+      state.lockedDueToRefresh = false;
+      state.lockedDueToManual = false;
+      break;
+    case "refresh":
+      state.lockedDueToInactivity = false;
+      state.lockedDueToRefresh = true;
+      state.lockedDueToManual = false;
+      break;
+    case "security_breach":
+      state.lockedDueToInactivity = false;
+      state.lockedDueToRefresh = false;
+      state.lockedDueToManual = false;
+      break;
+    case "recovery_verification":
+      state.lockedDueToInactivity = false;
+      state.lockedDueToRefresh = false;
+      state.lockedDueToManual = false;
+      break;
+    default: // manual
+      state.lockedDueToInactivity = false;
+      state.lockedDueToRefresh = false;
+      state.lockedDueToManual = true;
+  }
+
+  // Close any open modals
+  try {
+    closeAllModals();
+  } catch (_) {}
+
+  // Set lock reason in storage
+  try {
+    if (reason !== "manual") {
+      localStorage.removeItem("vaultWasUnlocked");
+    }
+    localStorage.setItem("vaultLockReason", reason);
+  } catch (_) {}
+
+  // Clear session password for certain reasons
+  try {
+    if (reason === "manual" || reason === "inactivity" || reason === "security_breach") {
+      sessionStorage.removeItem("tempMasterPassword");
+    }
+  } catch (_) {}
+
+  // Re-render to show lock screen
+  render();
+}
+
 // ========================================
 // PART 11: EVENT LISTENERS & INITIALIZATION
 // ========================================
@@ -4127,29 +5016,7 @@ function setupEventListeners() {
 
   // Lock button
   domElements.lockButton?.addEventListener("click", () => {
-    if (autoLogoutTimer) {
-      clearTimeout(autoLogoutTimer);
-    }
-    state.isLocked = true;
-    state.masterPassword = null;
-    state.decryptedData = null;
-    state.selectedItemId = null;
-    state.lockedDueToInactivity = false; // manual lock should not show inactivity banner
-    state.lockedDueToRefresh = false; // nor refresh banner
-    state.lockedDueToManual = true;
-    try {
-      closeAllModals();
-    } catch (_) {}
-    try {
-      localStorage.setItem("vaultLockReason", "manual");
-    } catch (_) {}
-
-    // Clear session password since user manually locked
-    try {
-      sessionStorage.removeItem("tempMasterPassword");
-    } catch (_) {}
-
-    render();
+    lockVault("manual");
   });
 
   // Search functionality
@@ -4482,6 +5349,10 @@ function handleMasterPasswordSubmit(e) {
       state.lockedDueToRefresh = false;
       state.lockedDueToManual = false;
 
+      // Initialize breach protection system
+      initializeBreachProtection();
+      createVaultBackup();
+
       // Mark that vault was unlocked this session (so a hard refresh can show banner)
       try {
         localStorage.setItem("vaultWasUnlocked", "1");
@@ -4701,6 +5572,10 @@ function handleMasterPasswordSubmit(e) {
     state.lockedDueToInactivity = false;
     state.lockedDueToRefresh = false;
     state.lockedDueToManual = false;
+
+    // Initialize breach protection system
+    initializeBreachProtection();
+    createVaultBackup();
 
     try {
       localStorage.setItem("vaultWasUnlocked", "1");
