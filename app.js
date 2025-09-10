@@ -646,126 +646,88 @@ function showBreachBanner(type, message) {
     existingBanner.remove();
   }
 
-  // Create full-screen overlay backdrop
+  // Create full-screen overlay backdrop matching lock screen pattern
   const overlay = document.createElement("div");
   overlay.id = "breach-banner";
   overlay.setAttribute("role", "alert");
   overlay.setAttribute("aria-live", "assertive");
+  overlay.className = "h-full w-full flex items-center justify-center bg-gray-100 dark:bg-gray-900 transition-opacity duration-500";
   
-  // Apply theme-aware full-screen overlay styling
-  overlay.className = "fixed inset-0 z-[10000] flex items-center justify-center p-4";
+  // Apply full-screen styling with lock screen colors
   Object.assign(overlay.style, {
-    background: "rgba(0, 0, 0, 0.8)",
-    backdropFilter: "saturate(120%) blur(8px)",
-    WebkitBackdropFilter: "saturate(120%) blur(8px)",
-    fontFamily: "Inter, system-ui, sans-serif",
+    position: "fixed",
+    top: "0",
+    left: "0",
+    right: "0",
+    bottom: "0",
+    zIndex: "10000",
+    fontFamily: "Inter, system-ui, sans-serif"
   });
 
-  // Create the main banner card
-  const banner = document.createElement("div");
-  banner.className = "w-full max-w-2xl";
-  
-  // Apply glassmorphic card styling following the inactivity banner pattern
-  Object.assign(banner.style, {
-    position: "relative",
-    background: "rgba(239, 68, 68, 0.15)", // Transparent red like inactivity banner
-    border: "1px solid rgba(239, 68, 68, 0.4)",
-    borderRadius: "1rem",
-    padding: "2rem",
-    boxShadow: `
-      0 20px 25px -5px rgba(0, 0, 0, 0.3),
-      0 10px 10px -5px rgba(0, 0, 0, 0.15)
-    `,
-    backdropFilter: "saturate(120%) blur(8px)",
-    WebkitBackdropFilter: "saturate(120%) blur(8px)",
-    color: "#dc2626" // Red-600 for light mode text
-  });
+  // Create the main container matching lock screen structure exactly
+  const container = document.createElement("div");
+  container.className = "w-full max-w-lg p-8 space-y-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl";
 
-  // Add glassmorphic reflection effect (more subtle for transparent design)
-  const reflection = document.createElement("div");
-  Object.assign(reflection.style, {
-    position: "absolute",
-    inset: "0",
-    borderRadius: "inherit",
-    background: "linear-gradient(135deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 20%, rgba(255,255,255,0) 45%)",
-    pointerEvents: "none"
-  });
-  banner.appendChild(reflection);
-
-  // Content container
-  const content = document.createElement("div");
-  content.style.position = "relative";
-  content.style.zIndex = "1";
-
-  // Header section - centered without icon
+  // Header section with shield icon (matching lock screen pattern)
   const header = document.createElement("div");
-  header.className = "text-center mb-6";
+  header.className = "text-center";
   
   const title = document.createElement("h2");
-  title.className = "text-3xl font-bold mb-2";
-  title.textContent = "Security Breach Detected"; // Removed shield emoji
-  title.style.color = "#ffffff"; // White text for visibility on red background
+  title.className = "mt-4 text-3xl font-bold text-gray-900 dark:text-white flex items-center justify-center gap-3";
+  title.innerHTML = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary-500">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+      <path d="M12 8v4"/>
+      <path d="M12 16h.01"/>
+    </svg>
+    Security Breach Detected
+  `;
   
   const subtitle = document.createElement("p");
-  subtitle.className = "text-lg mb-3";
-  subtitle.style.color = "#fef2f2"; // Red-50 - very light red/white for visibility
-  subtitle.style.opacity = "0.9";
-  subtitle.textContent = "Unauthorized access to your vault data";
-  
-  const waitingText = document.createElement("p");
-  waitingText.className = "text-sm";
-  waitingText.style.color = "#fecaca"; // Red-200 - light red for subtle text
-  waitingText.style.opacity = "0.85";
-  waitingText.style.fontStyle = "italic";
-  waitingText.textContent = "Please review the details below and choose an action to continue.";
+  subtitle.className = "mt-2 text-sm text-gray-600 dark:text-gray-400";
+  subtitle.textContent = "Unauthorized access to your vault data has been detected";
   
   header.appendChild(title);
   header.appendChild(subtitle);
-  header.appendChild(waitingText);
 
-  // Message section with better contrast for transparent design
+  // Message section (similar to lock screen form area)
   const messageSection = document.createElement("div");
-  messageSection.className = "mb-8";
-  Object.assign(messageSection.style, {
-    background: "rgba(255, 255, 255, 0.2)",
-    border: "1px solid rgba(239, 68, 68, 0.3)",
-    borderRadius: "0.75rem",
-    padding: "1.5rem",
-    backdropFilter: "blur(4px)"
-  });
-
-  const messageTitle = document.createElement("h3");
-  messageTitle.className = "text-lg font-semibold mb-2";
-  messageTitle.textContent = "Threat Details";
-  messageTitle.style.color = "#ffffff"; // White for visibility
+  messageSection.className = "space-y-4";
   
-  const messageText = document.createElement("p");
-  messageText.className = "text-base leading-relaxed";
-  messageText.style.color = "#fef2f2"; // Red-50 - very light for readability
-  messageText.style.opacity = "0.95";
-  messageText.textContent = message;
+  // Details container with lock screen styling
+  const detailsContainer = document.createElement("div");
+  detailsContainer.className = "w-full px-4 py-3 text-gray-900 bg-gray-100 dark:bg-gray-700 dark:text-white border-2 border-transparent rounded-lg";
   
-  messageSection.appendChild(messageTitle);
-  messageSection.appendChild(messageText);
+  const detailsTitle = document.createElement("h3");
+  detailsTitle.className = "text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300";
+  detailsTitle.textContent = "Threat Details:";
+  
+  const detailsText = document.createElement("p");
+  detailsText.className = "text-sm text-gray-600 dark:text-gray-400";
+  detailsText.textContent = message || "Your browser storage has been compromised";
+  
+  detailsContainer.appendChild(detailsTitle);
+  detailsContainer.appendChild(detailsText);
+  
+  // Instruction text
+  const instructionText = document.createElement("p");
+  instructionText.className = "text-sm text-gray-600 dark:text-gray-400 text-center";
+  instructionText.textContent = "Choose an action to secure your vault:";
+  
+  messageSection.appendChild(detailsContainer);
+  messageSection.appendChild(instructionText);
 
-  // Actions section
+  // Action buttons section (matching lock screen button layout)
   const actionsSection = document.createElement("div");
-  actionsSection.className = "flex flex-wrap gap-3 justify-center";
+  actionsSection.className = "space-y-4";
 
-  // Recover button for data loss/corruption/complete wipe
+  // Recovery button for data loss scenarios (matching lock screen button style)
   if (type === "critical_data_deletion" || type === "data_corruption" || type === "complete_storage_wipe") {
     const recoverBtn = document.createElement("button");
-    recoverBtn.className = "px-6 py-3 font-semibold rounded-lg transition-all duration-200 flex items-center gap-2";
-    Object.assign(recoverBtn.style, {
-      background: "rgba(16, 185, 129, 0.15)",
-      border: "2px solid rgba(16, 185, 129, 0.6)",
-      color: "#059669", // Emerald-600
-      backdropFilter: "blur(4px)",
-      boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)"
-    });
+    recoverBtn.className = "w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200 text-sm flex items-center justify-center gap-2";
     
     recoverBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
         <path d="M21 3v5h-5"/>
         <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
@@ -774,27 +736,13 @@ function showBreachBanner(type, message) {
       Initiate Recovery
     `;
     
-    recoverBtn.addEventListener("mouseenter", () => {
-      recoverBtn.style.transform = "translateY(-2px)";
-      recoverBtn.style.background = "rgba(16, 185, 129, 0.25)";
-      recoverBtn.style.borderColor = "rgba(16, 185, 129, 0.8)";
-      recoverBtn.style.boxShadow = "0 8px 20px rgba(16, 185, 129, 0.3)";
-    });
-    
-    recoverBtn.addEventListener("mouseleave", () => {
-      recoverBtn.style.transform = "translateY(0)";
-      recoverBtn.style.background = "rgba(16, 185, 129, 0.15)";
-      recoverBtn.style.borderColor = "rgba(16, 185, 129, 0.6)";
-      recoverBtn.style.boxShadow = "0 4px 12px rgba(16, 185, 129, 0.2)";
-    });
-    
     recoverBtn.addEventListener("click", () => {
-      // Disable button during recovery attempt
+      // Disable button during recovery
       recoverBtn.disabled = true;
-      recoverBtn.style.opacity = "0.6";
+      recoverBtn.className = recoverBtn.className.replace('hover:bg-primary-700', '');
       recoverBtn.innerHTML = `
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none"/>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" fill="none" opacity="0.3"/>
           <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
         </svg>
         Recovering...
@@ -804,8 +752,17 @@ function showBreachBanner(type, message) {
         if (recoverVaultData()) {
           // Disable refresh prevention since user made a choice
           disableRefreshPrevention();
-          
           overlay.remove();
+          
+          // Preserve accent theme before locking for recovery verification
+          if (state.decryptedData?.settings?.accentTheme) {
+            try {
+              localStorage.setItem("accentTheme", state.decryptedData.settings.accentTheme);
+              if (state.decryptedData.settings.accentCustomBase) {
+                localStorage.setItem("accentCustomBase", state.decryptedData.settings.accentCustomBase);
+              }
+            } catch (_) {}
+          }
           
           // Lock vault for security verification after recovery
           lockVault("recovery_verification");
@@ -824,7 +781,8 @@ function showBreachBanner(type, message) {
             showLockScreenMessage();
           }, 500);
         } else {
-          // Recovery failed - show better error and option to dismiss
+          // Recovery failed - show error and change to create new vault button
+          recoverBtn.className = "w-full px-4 py-3 font-semibold text-white bg-red-600 rounded-lg transition-all duration-200 text-sm flex items-center justify-center gap-2";
           recoverBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"/>
@@ -833,178 +791,141 @@ function showBreachBanner(type, message) {
             </svg>
             Recovery Failed
           `;
-          recoverBtn.style.background = "rgba(239, 68, 68, 0.15)";
-          recoverBtn.style.borderColor = "rgba(239, 68, 68, 0.6)";
-          recoverBtn.style.color = "#dc2626";
           
-          // Add explanation text
-          const errorText = document.createElement("p");
-          errorText.className = "text-sm mt-4 text-center";
-          errorText.style.color = "#fecaca";
-          errorText.textContent = "Unable to recover data - all storage was cleared. You'll need to create a new vault.";
-          messageSection.appendChild(errorText);
+          // Add error message
+          const errorMsg = document.createElement("p");
+          errorMsg.className = "text-sm text-red-600 dark:text-red-400 text-center";
+          errorMsg.textContent = "Unable to recover data. All storage was cleared.";
+          actionsSection.appendChild(errorMsg);
           
-          // Change to "Create New Vault" after 2 seconds
+          // Change to "Accept & Create New" after 2 seconds
           setTimeout(() => {
+            recoverBtn.className = "w-full px-4 py-3 font-semibold text-white bg-primary-600 rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200 text-sm flex items-center justify-center gap-2";
             recoverBtn.innerHTML = `
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 6 9 17l-5-5"/>
               </svg>
               Accept & Create New Vault
             `;
             recoverBtn.onclick = () => {
-              // Disable refresh prevention since user made a choice
               disableRefreshPrevention();
-              
-              // Same as dismiss button - clear data and go to creation
               overlay.remove();
               localStorage.removeItem("vaultData");
               localStorage.removeItem("vaultViewState");
               localStorage.removeItem("passwordHistory");
               lockVault("security_breach");
               
+              try {
+                localStorage.setItem("lockScreenMessage", JSON.stringify({
+                  type: "security_breach",
+                  message: "Due to the security breach, your vault data has been cleared for safety. Please create a new vault to continue.",
+                  timestamp: Date.now()
+                }));
+              } catch (_) {}
+              
               setTimeout(() => {
-                const passwordError = document.getElementById("password-error");
-                if (passwordError) {
-                  passwordError.innerHTML = `
-                    <div id="security-breach-banner" class="mt-3 px-3 py-2 rounded-md text-sm border text-center" style="
-                      position: relative;
-                      background-color: rgb(from var(--primary-600) r g b / 0.12) !important;
-                      border-color: rgb(from var(--primary-600) r g b / 0.35) !important;
-                      color: var(--primary-700) !important;
-                      backdrop-filter: saturate(120%) blur(6px);
-                      -webkit-backdrop-filter: saturate(120%) blur(6px);
-                      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
-                    ">
-                      Due to the security breach, your vault data has been cleared for safety. Please create a new vault to continue.
-                    </div>
-                  `;
-                  
-                  // Apply theme-appropriate styling
-                  if (document.documentElement.classList.contains('dark')) {
-                    const banner = document.getElementById('security-breach-banner');
-                    if (banner) {
-                      banner.style.setProperty('background-color', 'rgb(from var(--primary-700) r g b / 0.25)', 'important');
-                      banner.style.setProperty('border-color', 'rgb(from var(--primary-600) r g b / 0.5)', 'important');
-                      banner.style.setProperty('color', '#ffffff', 'important');
-                      banner.style.setProperty('box-shadow', '0 6px 20px rgba(0,0,0,0.25)', 'important');
-                    }
-                  } else {
-                    const banner = document.getElementById('security-breach-banner');
-                    if (banner) {
-                      banner.style.setProperty('color', 'var(--primary-700)', 'important');
-                    }
-                  }
-                }
+                showLockScreenMessage();
               }, 500);
             };
+            recoverBtn.disabled = false;
           }, 2000);
-          
-          recoverBtn.disabled = false;
-          recoverBtn.style.opacity = "1";
         }
-      }, 800); // Small delay to show loading state
+      }, 800);
     });
     
     actionsSection.appendChild(recoverBtn);
   }
 
-  // Dismiss button
+  // Dismiss button (matching lock screen secondary button style)
   const dismissBtn = document.createElement("button");
-  dismissBtn.className = "px-6 py-3 font-semibold rounded-lg transition-all duration-200 flex items-center gap-2";
-  Object.assign(dismissBtn.style, {
-    background: "rgba(255, 255, 255, 0.2)", // White background with transparency
-    border: "2px solid rgba(255, 255, 255, 0.5)",
-    color: "#ffffff", // White text for visibility
-    backdropFilter: "blur(4px)",
-    boxShadow: "0 4px 12px rgba(0, 0, 0, 0.2)"
-  });
+  dismissBtn.className = "w-full px-4 py-3 font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-all duration-200 text-sm flex items-center justify-center gap-2";
   
   dismissBtn.innerHTML = `
     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M18 6 6 18"/>
       <path d="m6 6 12 12"/>
     </svg>
-    Dismiss Alert
+    Clear Vault & Start Over
   `;
   
-  dismissBtn.addEventListener("mouseenter", () => {
-    dismissBtn.style.transform = "translateY(-2px)";
-    dismissBtn.style.background = "rgba(255, 255, 255, 0.3)";
-    dismissBtn.style.borderColor = "rgba(255, 255, 255, 0.7)";
-    dismissBtn.style.boxShadow = "0 8px 20px rgba(0, 0, 0, 0.3)";
-  });
-  
-  dismissBtn.addEventListener("mouseleave", () => {
-    dismissBtn.style.transform = "translateY(0)";
-    dismissBtn.style.background = "rgba(255, 255, 255, 0.2)";
-    dismissBtn.style.borderColor = "rgba(255, 255, 255, 0.5)";
-    dismissBtn.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.2)";
-  });
-  
   dismissBtn.addEventListener("click", () => {
-    // Fade out the overlay
-    overlay.style.transition = "opacity 0.3s ease, backdrop-filter 0.3s ease";
-    overlay.style.opacity = "0";
-    overlay.style.backdropFilter = "blur(0px)";
+    disableRefreshPrevention();
+    overlay.remove();
     
+    // Clear vault data due to security breach
+    localStorage.removeItem("vaultData");
+    localStorage.removeItem("vaultViewState");
+    localStorage.removeItem("passwordHistory");
+    
+    // Lock the vault and reset state
+    lockVault("security_breach");
+    
+    // Store security breach message for persistence across refreshes
+    try {
+      localStorage.setItem("lockScreenMessage", JSON.stringify({
+        type: "security_breach",
+        message: "Due to the security breach, your vault data has been cleared for safety. Please create a new vault to continue.",
+        timestamp: Date.now()
+      }));
+    } catch (_) {}
+    
+    // Show security breach message on lock screen
     setTimeout(() => {
-      // Disable refresh prevention since user made a choice
-      disableRefreshPrevention();
-      
-      overlay.remove();
-      
-      // Clear vault data due to security breach
-      localStorage.removeItem("vaultData");
-      localStorage.removeItem("vaultViewState");
-      localStorage.removeItem("passwordHistory");
-      
-      // Lock the vault and reset state
-      lockVault("security_breach");
-      
-      // Store security breach message for persistence across refreshes
-      try {
-        localStorage.setItem("lockScreenMessage", JSON.stringify({
-          type: "security_breach",
-          message: "Due to the security breach, your vault data has been cleared for safety. Please create a new vault to continue.",
-          timestamp: Date.now()
-        }));
-      } catch (_) {}
-      
-      // Show security breach message on lock screen
-      setTimeout(() => {
-        showLockScreenMessage();
-      }, 500); // Show message after lock screen renders
-      
-    }, 300);
+      showLockScreenMessage();
+    }, 500);
   });
   
   actionsSection.appendChild(dismissBtn);
 
-  // Assemble the banner
-  content.appendChild(header);
-  content.appendChild(messageSection);  
-  content.appendChild(actionsSection);
-  banner.appendChild(content);
-  overlay.appendChild(banner);
+  // Theme buttons section (matching lock screen theme buttons)
+  const themeSection = document.createElement("div");
+  themeSection.className = "flex items-center justify-center gap-2 pt-4 border-t border-gray-200 dark:border-gray-700";
+  
+  const themeButtons = [
+    { id: 'light', title: 'Light Mode', icon: '<circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>' },
+    { id: 'dark', title: 'Dark Mode', icon: '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>' },
+    { id: 'auto', title: 'System Default', icon: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>' },
+    { id: 'greyscale', title: 'Greyscale Mode', icon: '<circle cx="12" cy="12" r="9" fill="#374151"/><path d="M12 3a9 9 0 0 1 0 18z" fill="white"/><circle cx="12" cy="9" r="1.5" fill="white"/><circle cx="12" cy="15" r="1.5" fill="#374151"/>' }
+  ];
+  
+  themeButtons.forEach(theme => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "theme-btn p-2 rounded-lg";
+    btn.title = theme.title;
+    btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${theme.icon}</svg>`;
+    
+    // Apply current theme state
+    const currentTheme = localStorage.getItem('theme') || 'auto';
+    if (theme.id === currentTheme) {
+      btn.classList.add('active');
+    }
+    
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      // Apply theme using existing theme system
+      applyTheme(theme.id);
+      // Update active state
+      themeButtons.forEach(t => {
+        const themeBtn = themeSection.querySelector(`button[title="${t.title}"]`);
+        if (themeBtn) {
+          themeBtn.classList.toggle('active', t.id === theme.id);
+        }
+      });
+    });
+    
+    themeSection.appendChild(btn);
+  });
 
-  // Add to page with animation
+  // Assemble the container
+  container.appendChild(header);
+  container.appendChild(messageSection);  
+  container.appendChild(actionsSection);
+  container.appendChild(themeSection);
+  overlay.appendChild(container);
+
+  // Add to page
   document.body.appendChild(overlay);
-  
-  // Animate in
-  overlay.style.opacity = "0";
-  overlay.style.backdropFilter = "blur(0px)";
-  banner.style.transform = "scale(0.95) translateY(20px)";
-  banner.style.transition = "all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)";
-  
-  setTimeout(() => {
-    overlay.style.transition = "opacity 0.4s ease, backdrop-filter 0.4s ease";
-    overlay.style.opacity = "1";
-    overlay.style.backdropFilter = "saturate(120%) blur(8px)";
-    banner.style.transform = "scale(1) translateY(0)";
-  }, 50);
-
-  // Banner now waits for user action - no auto-dismiss
 
   // Close on escape key
   const handleEscape = (e) => {
@@ -5478,8 +5399,41 @@ function handleMasterPasswordSubmit(e) {
         } catch (_) {}
       }
 
+      // Clear recovery success message if present (user has now verified identity)
+      try {
+        const storedMessage = localStorage.getItem("lockScreenMessage");
+        if (storedMessage) {
+          const messageData = JSON.parse(storedMessage);
+          if (messageData.type === "recovery_success") {
+            localStorage.removeItem("lockScreenMessage");
+            
+            // Also remove the banner from DOM if it exists and clear the container
+            const banner = document.getElementById("persistent-lock-banner");
+            if (banner) {
+              banner.remove();
+            }
+            
+            // Clear the password-error container to prevent recreation
+            const passwordError = document.getElementById("password-error");
+            if (passwordError) {
+              passwordError.innerHTML = "";
+            }
+            
+            console.log("Recovery verification complete - message cleared");
+          }
+        }
+      } catch (_) {}
+
       loadViewState();
       render();
+      
+      // Update accent theme selection in profile after recovery
+      setTimeout(() => {
+        const currentAccent = state.decryptedData?.settings?.accentTheme || 
+                             localStorage.getItem("accentTheme") || 
+                             "indigo";
+        updateAccentThemeSelection(currentAccent);
+      }, 100);
     } else {
       // Enhanced validation message with icon
       const errorContainer = domElements.passwordError;
