@@ -1266,6 +1266,297 @@ function decrypt(encryptedData, password) {
   }
 }
 
+// ========================================
+// PART 2A: TOTP (Time-Based One-Time Password) FUNCTIONS
+// ========================================
+
+/**
+ * Generate a cryptographically secure secret for TOTP
+ */
+function generateTOTPSecret() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  const secretLength = 32;
+  let secret = '';
+  
+  // Use crypto.getRandomValues if available for better security
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const randomBytes = new Uint8Array(secretLength);
+    crypto.getRandomValues(randomBytes);
+    for (let i = 0; i < secretLength; i++) {
+      secret += chars[randomBytes[i] % chars.length];
+    }
+  } else {
+    // Fallback for older browsers
+    for (let i = 0; i < secretLength; i++) {
+      secret += chars[Math.floor(Math.random() * chars.length)];
+    }
+  }
+  
+  return secret;
+}
+
+/**
+ * Generate TOTP token using HMAC-SHA1
+ */
+function generateTOTP(secret, timeStep = 30, digits = 6) {
+  if (!secret) return null;
+  
+  try {
+    // Current time step (30-second intervals)
+    const time = Math.floor(Date.now() / 1000);
+    const counter = Math.floor(time / timeStep);
+    
+    // Convert counter to 8-byte array
+    const counterBytes = [];
+    let temp = counter;
+    for (let i = 7; i >= 0; i--) {
+      counterBytes[i] = temp & 0xff;
+      temp >>= 8;
+    }
+    
+    // Convert secret from base32 to bytes
+    const secretBytes = base32ToBytes(secret);
+    if (!secretBytes) return null;
+    
+    // HMAC-SHA1
+    const hmac = CryptoJS.HmacSHA1(
+      CryptoJS.lib.WordArray.create(counterBytes), 
+      CryptoJS.lib.WordArray.create(secretBytes)
+    );
+    
+    // Convert to bytes array
+    const hmacBytes = [];
+    const words = hmac.words;
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      hmacBytes.push((word >>> 24) & 0xff);
+      hmacBytes.push((word >>> 16) & 0xff);
+      hmacBytes.push((word >>> 8) & 0xff);
+      hmacBytes.push(word & 0xff);
+    }
+    
+    // Dynamic truncation
+    const offset = hmacBytes[hmacBytes.length - 1] & 0x0f;
+    const code = ((hmacBytes[offset] & 0x7f) << 24) |
+                 ((hmacBytes[offset + 1] & 0xff) << 16) |
+                 ((hmacBytes[offset + 2] & 0xff) << 8) |
+                 (hmacBytes[offset + 3] & 0xff);
+    
+    // Generate final token
+    const token = (code % Math.pow(10, digits)).toString().padStart(digits, '0');
+    return token;
+  } catch (error) {
+    console.error('TOTP generation error:', error);
+    return null;
+  }
+}
+
+/**
+ * Convert base32 string to byte array (RFC 4648 compliant)
+ */
+function base32ToBytes(base32) {
+  if (!base32) return null;
+  
+  // Remove padding and convert to uppercase
+  const cleanBase32 = base32.replace(/=+$/, '').toUpperCase();
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  
+  const bytes = [];
+  let bits = 0;
+  let value = 0;
+  
+  for (let i = 0; i < cleanBase32.length; i++) {
+    const char = cleanBase32[i];
+    const index = alphabet.indexOf(char);
+    
+    if (index === -1) {
+      console.error('Invalid base32 character:', char);
+      return null;
+    }
+    
+    value = (value << 5) | index;
+    bits += 5;
+    
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  
+  return new Uint8Array(bytes);
+}
+
+/**
+ * Verify TOTP token with time window tolerance
+ */
+function verifyTOTP(secret, token, tolerance = 1) {
+  if (!secret || !token) {
+    console.log('TOTP Verify: Missing secret or token');
+    return false;
+  }
+  
+  const cleanToken = token.toString().replace(/\s/g, '');
+  if (cleanToken.length !== 6) {
+    console.log('TOTP Verify: Invalid token length:', cleanToken.length);
+    return false;
+  }
+  
+  console.log('TOTP Verify: Checking token', cleanToken, 'against secret', secret.substring(0, 8) + '...');
+  
+  const currentTime = Math.floor(Date.now() / 1000);
+  const currentTimeStep = Math.floor(currentTime / 30);
+  
+  // Check current time and adjacent time windows
+  for (let i = -tolerance; i <= tolerance; i++) {
+    const timeStep = currentTimeStep + i;
+    const expectedToken = generateTOTPFromTimeStep(secret, timeStep);
+    
+    console.log(`TOTP Verify: Window ${i}: timeStep=${timeStep}, generated=${expectedToken}, input=${cleanToken}`);
+    
+    if (expectedToken === cleanToken) {
+      console.log('TOTP Verify: ✅ Token matched in window', i);
+      return true;
+    }
+  }
+  
+  console.log('TOTP Verify: ❌ No token match found');
+  
+  // Generate current token for debugging
+  const currentToken = generateTOTPFromTimeStep(secret, currentTimeStep);
+  console.log('TOTP Verify: Current expected token is:', currentToken);
+  
+  return false;
+}
+
+/**
+ * Generate TOTP for specific time step (internal use)
+ */
+function generateTOTPFromTimeStep(secret, timeStep) {
+  try {
+    // Convert time step to 8-byte big-endian array
+    const counter = new ArrayBuffer(8);
+    const counterView = new DataView(counter);
+    counterView.setUint32(4, timeStep, false); // Big-endian, high 32 bits are 0
+    const counterBytes = new Uint8Array(counter);
+    
+    // Decode base32 secret
+    const secretBytes = base32ToBytes(secret);
+    if (!secretBytes) {
+      console.error('Failed to decode base32 secret');
+      return null;
+    }
+    
+    // Create WordArrays for CryptoJS
+    const counterWordArray = CryptoJS.lib.WordArray.create(counterBytes);
+    const secretWordArray = CryptoJS.lib.WordArray.create(secretBytes);
+    
+    // Compute HMAC-SHA1
+    const hmac = CryptoJS.HmacSHA1(counterWordArray, secretWordArray);
+    
+    // Convert HMAC result to byte array
+    const hmacBytes = [];
+    const words = hmac.words;
+    for (let i = 0; i < words.length; i++) {
+      const word = words[i];
+      hmacBytes.push((word >>> 24) & 0xff);
+      hmacBytes.push((word >>> 16) & 0xff);
+      hmacBytes.push((word >>> 8) & 0xff);
+      hmacBytes.push(word & 0xff);
+    }
+    
+    // Dynamic truncation (RFC 4226)
+    const offset = hmacBytes[hmacBytes.length - 1] & 0x0f;
+    const code = ((hmacBytes[offset] & 0x7f) << 24) |
+                 ((hmacBytes[offset + 1] & 0xff) << 16) |
+                 ((hmacBytes[offset + 2] & 0xff) << 8) |
+                 (hmacBytes[offset + 3] & 0xff);
+    
+    // Generate 6-digit code
+    const otp = (code % 1000000).toString().padStart(6, '0');
+    
+    console.log(`TOTP Debug: timeStep=${timeStep}, secret=${secret.substring(0, 8)}..., generated=${otp}`);
+    
+    return otp;
+  } catch (error) {
+    console.error('TOTP generation error:', error);
+    return null;
+  }
+}
+
+/**
+ * Generate backup recovery codes
+ */
+function generateBackupCodes(count = 10) {
+  const codes = [];
+  for (let i = 0; i < count; i++) {
+    let code = '';
+    for (let j = 0; j < 8; j++) {
+      code += Math.floor(Math.random() * 10);
+    }
+    codes.push(code);
+  }
+  return codes;
+}
+
+/**
+ * Generate QR code data URL for TOTP setup
+ */
+function generateTOTPQRCode(secret, issuer = 'Vault', accountName = 'User') {
+  const otpUrl = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(accountName)}?secret=${secret}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+  
+  try {
+    // Check if QRious is available
+    if (typeof QRious === 'undefined') {
+      throw new Error('QRious library not loaded');
+    }
+    
+    // Use QRious library
+    const qr = new QRious({
+      value: otpUrl,
+      size: 256,
+      level: 'M', // Error correction level
+      background: 'white',
+      foreground: 'black'
+    });
+    
+    const qrCodeDataUrl = qr.toDataURL();
+    
+    return {
+      url: otpUrl,
+      qrCodeDataUrl: qrCodeDataUrl,
+      qrCodeSvg: null,
+      secret: secret,
+      manualEntry: `Secret: ${secret.match(/.{4}/g).join(' ')}`
+    };
+  } catch (error) {
+    console.error('QR Code generation failed:', error);
+    
+    // Fallback: create a manual QR code instruction
+    return {
+      url: otpUrl,
+      qrCodeDataUrl: null,
+      qrCodeSvg: null,
+      secret: secret,
+      manualEntry: `Secret: ${secret.match(/.{4}/g).join(' ')}`,
+      fallbackInstructions: `
+        <div class="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+          <p class="text-sm text-blue-700 dark:text-blue-300 mb-2">
+            QR Code generation failed. Please add manually:
+          </p>
+          <ol class="text-xs text-blue-600 dark:text-blue-400 text-left space-y-1">
+            <li>1. Open your authenticator app</li>
+            <li>2. Choose "Add account" or "+"</li>
+            <li>3. Select "Enter key manually"</li>
+            <li>4. Account: ${escapeHtml(issuer)}</li>
+            <li>5. Key: ${secret}</li>
+            <li>6. Type: Time-based</li>
+          </ol>
+        </div>
+      `
+    };
+  }
+}
+
 // Derive a binding hash that couples the security question text with the answer.
 // This prevents silently swapping a different question while keeping the same answer for an old backup.
 function computeSecurityQABinding(question, answer) {
@@ -1895,6 +2186,16 @@ function initializeDOMElements() {
       "forgot-password-container"
     ),
     forgotPasswordBtn: document.getElementById("forgot-password-btn"),
+
+    // OTP verification elements
+    otpContainer: document.getElementById("otp-container"),
+    otpCode: document.getElementById("otp-code"),
+    verifyOtpButton: document.getElementById("verify-otp-button"),
+    useBackupCodeBtn: document.getElementById("use-backup-code-btn"),
+    backupCodeContainer: document.getElementById("backup-code-container"),
+    backupCode: document.getElementById("backup-code"),
+    verifyBackupCodeButton: document.getElementById("verify-backup-code-button"),
+    backToOtpBtn: document.getElementById("back-to-otp-btn"),
 
     // Main app navigation
     navSidebar: document.getElementById("nav-sidebar"),
@@ -3389,6 +3690,107 @@ function renderProfileSettings() {
                         </div>
                     </div>
 
+          <!-- Two-Factor Authentication (OTP) -->
+          <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="otp-section">
+            <div class="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-600 dark:text-green-400">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                <circle cx="12" cy="16" r="1"/>
+              </svg>
+              <h3 class="text-lg font-semibold">Two-Factor Authentication (2FA)</h3>
+            </div>
+            <p class="text-xs text-gray-600 dark:text-gray-400">Add an extra layer of security with time-based one-time passwords (TOTP).</p>
+            
+            <div id="otp-content">
+              ${(() => {
+                const settings = state.decryptedData?.settings || {};
+                const otpEnabled = settings.otpEnabled === true;
+                const otpSecret = settings.otpSecret;
+                const backupCodes = settings.backupCodes || [];
+                
+                if (!otpEnabled) {
+                  return `
+                    <div class="text-center py-6">
+                      <div class="mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-gray-400">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                          <line x1="8" y1="21" x2="16" y2="21"/>
+                          <line x1="8" y1="21" x2="12" y2="17"/>
+                          <line x1="16" y1="21" x2="12" y2="17"/>
+                        </svg>
+                      </div>
+                      <p class="text-gray-600 dark:text-gray-400 mb-4">Two-factor authentication is not enabled</p>
+                      <button type="button" id="enable-otp-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+                        Enable 2FA
+                      </button>
+                    </div>
+                  `;
+                } else {
+                  return `
+                    <div class="space-y-4">
+                      <div class="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                        <div class="flex items-center gap-2">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-600">
+                            <path d="M9 12l2 2 4-4"/>
+                            <path d="M21 12c0-2.21-1.79-4-4-4s-4 1.79-4 4 1.79 4 4 4 4-1.79 4-4z"/>
+                          </svg>
+                          <span class="text-sm font-medium text-green-800 dark:text-green-200">2FA is enabled</span>
+                        </div>
+                        <button type="button" id="disable-otp-btn" class="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">
+                          Disable
+                        </button>
+                      </div>
+                      
+                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <h4 class="text-sm font-medium mb-2">Current Code</h4>
+                          <div class="p-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-center">
+                            <div id="current-otp-code" class="text-2xl font-mono tracking-wider text-primary-600 dark:text-primary-400">------</div>
+                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Refreshes every 30 seconds
+                            </div>
+                            <div id="countdown-timer" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              --
+                            </div>
+                          </div>
+                          <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                            <button onclick="window.debugTOTP = !window.debugTOTP; setupOTPEventHandlers();" class="underline">
+                              Toggle Debug Mode
+                            </button>
+                          </div>
+                          <div id="totp-debug" class="mt-2 text-xs text-gray-600 dark:text-gray-400 hidden">
+                            <div>Secret: <span id="debug-secret">--</span></div>
+                            <div>Time Step: <span id="debug-timestep">--</span></div>
+                            <div>Unix Time: <span id="debug-time">--</span></div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <h4 class="text-sm font-medium mb-2">Backup Codes</h4>
+                          <div class="p-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg">
+                            <div class="text-sm text-gray-600 dark:text-gray-400">
+                              ${backupCodes.length} codes remaining
+                            </div>
+                            <div class="flex gap-2 mt-2">
+                              <button type="button" id="view-backup-codes-btn" class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-600 rounded hover:bg-gray-200 dark:hover:bg-gray-500">
+                                View
+                              </button>
+                              <button type="button" id="regenerate-backup-codes-btn" class="text-xs px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/50">
+                                Regenerate
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  `;
+                }
+              })()}
+            </div>
+          </div>
+
           <!-- Accent Theme Picker -->
           <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="accent-theme-section">
             <h3 class="text-lg font-semibold">Accent Theme</h3>
@@ -3475,6 +3877,9 @@ function renderProfileSettings() {
       }
     });
   }
+
+  // Setup OTP event handlers
+  setupOTPEventHandlers();
 
   // Build accent theme grid (no tick mark; border/ring highlight + integrated custom tile)
   const grid = document.getElementById("accent-theme-grid");
@@ -5045,6 +5450,41 @@ function setupEventListeners() {
     domElements.forgotPasswordModal.style.display = "block";
   });
 
+  // OTP verification events
+  domElements.useBackupCodeBtn?.addEventListener("click", () => {
+    domElements.otpContainer.style.display = "none";
+    domElements.backupCodeContainer.style.display = "block";
+    domElements.backupCode.focus();
+  });
+
+  domElements.backToOtpBtn?.addEventListener("click", () => {
+    domElements.backupCodeContainer.style.display = "none";
+    domElements.otpContainer.style.display = "block";
+    domElements.otpCode.focus();
+  });
+
+  // Auto-format OTP input
+  domElements.otpCode?.addEventListener("input", (e) => {
+    const value = e.target.value.replace(/\D/g, ''); // Only digits
+    e.target.value = value;
+    
+    // Auto-submit when 6 digits are entered
+    if (value.length === 6) {
+      domElements.verifyOtpButton?.click();
+    }
+  });
+
+  // Auto-format backup code input
+  domElements.backupCode?.addEventListener("input", (e) => {
+    const value = e.target.value.replace(/\D/g, ''); // Only digits
+    e.target.value = value;
+    
+    // Auto-submit when 8 digits are entered
+    if (value.length === 8) {
+      domElements.verifyBackupCodeButton?.click();
+    }
+  });
+
   // Lock button
   domElements.lockButton?.addEventListener("click", () => {
     lockVault("manual");
@@ -5373,59 +5813,17 @@ function handleMasterPasswordSubmit(e) {
     const decryptedData = loadData(password);
 
     if (decryptedData) {
-      state.masterPassword = password;
-      state.decryptedData = decryptedData;
-      state.isLocked = false;
-      state.lockedDueToInactivity = false;
-      state.lockedDueToRefresh = false;
-      state.lockedDueToManual = false;
-
-      // Initialize breach protection system
-      initializeBreachProtection();
-      createVaultBackup();
-
-      // Mark that vault was unlocked this session (so a hard refresh can show banner)
-      try {
-        localStorage.setItem("vaultWasUnlocked", "1");
-        localStorage.removeItem("vaultLockReason");
-      } catch (_) {}
-
-      // Store password in sessionStorage if auto lock on refresh is disabled
-      const autoLockOnRefresh =
-        decryptedData.settings?.autoLockOnRefresh ?? true;
-      if (!autoLockOnRefresh) {
-        try {
-          sessionStorage.setItem("tempMasterPassword", password);
-        } catch (_) {}
+      // Check if OTP is enabled for this vault
+      const otpEnabled = decryptedData.settings?.otpEnabled === true;
+      
+      if (otpEnabled) {
+        // Show OTP verification step
+        showOTPVerificationStep(password, decryptedData);
+        return;
       }
-
-      // Clear recovery success message if present (user has now verified identity)
-      try {
-        const storedMessage = localStorage.getItem("lockScreenMessage");
-        if (storedMessage) {
-          const messageData = JSON.parse(storedMessage);
-          if (messageData.type === "recovery_success") {
-            localStorage.removeItem("lockScreenMessage");
-            
-            // Also remove the banner from DOM if it exists and clear the container
-            const banner = document.getElementById("persistent-lock-banner");
-            if (banner) {
-              banner.remove();
-            }
-            
-            // Clear the password-error container to prevent recreation
-            const passwordError = document.getElementById("password-error");
-            if (passwordError) {
-              passwordError.innerHTML = "";
-            }
-            
-            console.log("Recovery verification complete - message cleared");
-          }
-        }
-      } catch (_) {}
-
-      loadViewState();
-      render();
+      
+      // Complete login without OTP
+      completeVaultUnlock(password, decryptedData);
       
       // Update accent theme selection in profile after recovery
       setTimeout(() => {
@@ -5659,6 +6057,225 @@ function handleMasterPasswordSubmit(e) {
     saveData();
     render();
   }
+}
+
+/**
+ * Complete vault unlock process (used for both regular and OTP-verified logins)
+ */
+function completeVaultUnlock(password, decryptedData) {
+  state.masterPassword = password;
+  state.decryptedData = decryptedData;
+  state.isLocked = false;
+  state.lockedDueToInactivity = false;
+  state.lockedDueToRefresh = false;
+  state.lockedDueToManual = false;
+
+  // Initialize breach protection system
+  initializeBreachProtection();
+  createVaultBackup();
+
+  // Mark that vault was unlocked this session (so a hard refresh can show banner)
+  try {
+    localStorage.setItem("vaultWasUnlocked", "1");
+    localStorage.removeItem("vaultLockReason");
+  } catch (_) {}
+
+  // Store password in sessionStorage if auto lock on refresh is disabled
+  const autoLockOnRefresh = decryptedData.settings?.autoLockOnRefresh ?? true;
+  if (!autoLockOnRefresh) {
+    try {
+      sessionStorage.setItem("tempMasterPassword", password);
+    } catch (_) {}
+  }
+
+  // Clear recovery success message if present (user has now verified identity)
+  try {
+    const storedMessage = localStorage.getItem("lockScreenMessage");
+    if (storedMessage) {
+      const messageData = JSON.parse(storedMessage);
+      if (messageData.type === "recovery_success") {
+        localStorage.removeItem("lockScreenMessage");
+        
+        // Also remove the banner from DOM if it exists and clear the container
+        const banner = document.getElementById("persistent-lock-banner");
+        if (banner) {
+          banner.remove();
+        }
+        
+        // Clear the password-error container to prevent recreation
+        const passwordError = document.getElementById("password-error");
+        if (passwordError) {
+          passwordError.innerHTML = "";
+        }
+        
+        console.log("Recovery verification complete - message cleared");
+      }
+    }
+  } catch (_) {}
+
+  loadViewState();
+  render();
+  
+  // Update accent theme selection in profile after recovery
+  setTimeout(() => {
+    const currentAccent = state.decryptedData?.settings?.accentTheme || 
+                         localStorage.getItem("accentTheme") || 
+                         "indigo";
+    updateAccentThemeSelection(currentAccent);
+  }, 100);
+}
+
+/**
+ * Show OTP verification step after successful password verification
+ */
+function showOTPVerificationStep(password, decryptedData) {
+  // Hide password containers and show OTP container
+  const masterPasswordContainer = domElements.masterPassword.parentElement;
+  const confirmPasswordContainer = domElements.confirmPasswordContainer;
+  
+  if (masterPasswordContainer) {
+    masterPasswordContainer.style.display = "none";
+  }
+  if (confirmPasswordContainer) {
+    confirmPasswordContainer.style.display = "none";
+  }
+  
+  // Show OTP container
+  domElements.otpContainer.style.display = "block";
+  domElements.backupCodeContainer.style.display = "none";
+  
+  // Focus on OTP input
+  domElements.otpCode.value = "";
+  domElements.otpCode.focus();
+  
+  // Store credentials temporarily for OTP verification
+  window.tempCredentials = { password, decryptedData };
+  
+  // Add OTP verification event listeners (if not already added)
+  if (!window.otpListenersAdded) {
+    domElements.verifyOtpButton?.addEventListener("click", (e) => {
+      e.preventDefault();
+      handleOTPVerification();
+    });
+    
+    domElements.verifyBackupCodeButton?.addEventListener("click", (e) => {
+      e.preventDefault();
+      handleBackupCodeVerification();
+    });
+    
+    window.otpListenersAdded = true;
+  }
+}
+
+/**
+ * Handle OTP code verification
+ */
+function handleOTPVerification() {
+  const otpCode = domElements.otpCode.value.trim();
+  const { password, decryptedData } = window.tempCredentials || {};
+  
+  if (!otpCode || otpCode.length !== 6) {
+    showOTPError("Please enter a valid 6-digit code.");
+    return;
+  }
+  
+  const otpSecret = decryptedData.settings?.otpSecret;
+  if (!otpSecret) {
+    showOTPError("OTP not properly configured. Please contact support.");
+    return;
+  }
+  
+  if (verifyTOTP(otpSecret, otpCode)) {
+    // OTP verification successful
+    cleanupOTPStep();
+    completeVaultUnlock(password, decryptedData);
+  } else {
+    showOTPError("Invalid code. Please try again.");
+    domElements.otpCode.value = "";
+    domElements.otpCode.focus();
+  }
+}
+
+/**
+ * Handle backup code verification
+ */
+function handleBackupCodeVerification() {
+  const backupCode = domElements.backupCode.value.trim();
+  const { password, decryptedData } = window.tempCredentials || {};
+  
+  if (!backupCode || backupCode.length !== 8) {
+    showOTPError("Please enter a valid 8-digit backup code.");
+    return;
+  }
+  
+  const backupCodes = decryptedData.settings?.backupCodes || [];
+  const codeIndex = backupCodes.indexOf(backupCode);
+  
+  if (codeIndex !== -1) {
+    // Backup code is valid - remove it from the list (single use)
+    backupCodes.splice(codeIndex, 1);
+    decryptedData.settings.backupCodes = backupCodes;
+    
+    // Show warning if running low on backup codes
+    if (backupCodes.length <= 2) {
+      console.warn(`Only ${backupCodes.length} backup codes remaining. Generate new ones in Profile settings.`);
+    }
+    
+    cleanupOTPStep();
+    completeVaultUnlock(password, decryptedData);
+  } else {
+    showOTPError("Invalid backup code. Please try again.");
+    domElements.backupCode.value = "";
+    domElements.backupCode.focus();
+  }
+}
+
+/**
+ * Show OTP verification error
+ */
+function showOTPError(message) {
+  domElements.passwordError.innerHTML = `
+    <div class="validation-message error">
+      <svg class="validation-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="15" y1="9" x2="9" y2="15"></line>
+        <line x1="9" y1="9" x2="15" y2="15"></line>
+      </svg>
+      <span>${message}</span>
+    </div>
+  `;
+  
+  // Auto-clear error after 3 seconds
+  setTimeout(() => {
+    domElements.passwordError.innerHTML = "";
+  }, 3000);
+}
+
+/**
+ * Clean up OTP verification step and restore UI
+ */
+function cleanupOTPStep() {
+  // Hide OTP containers
+  domElements.otpContainer.style.display = "none";
+  domElements.backupCodeContainer.style.display = "none";
+  
+  // Show password containers again
+  const masterPasswordContainer = domElements.masterPassword.parentElement;
+  const confirmPasswordContainer = domElements.confirmPasswordContainer;
+  
+  if (masterPasswordContainer) {
+    masterPasswordContainer.style.display = "block";
+  }
+  if (confirmPasswordContainer && !state.hasVault) {
+    confirmPasswordContainer.style.display = "block";
+  }
+  
+  // Clear temp credentials
+  delete window.tempCredentials;
+  
+  // Clear input values
+  domElements.otpCode.value = "";
+  domElements.backupCode.value = "";
 }
 
 /**
@@ -6395,6 +7012,409 @@ function closeAllModals() {
     "#import-export-modal .border-dashed svg"
   );
   if (uploadIcon) uploadIcon.classList.remove("error-red");
+}
+
+// ========================================
+// PART 7A: OTP MANAGEMENT FUNCTIONS
+// ========================================
+
+/**
+ * Setup OTP event handlers in Profile section
+ */
+function setupOTPEventHandlers() {
+  // Enable OTP button
+  const enableBtn = document.getElementById("enable-otp-btn");
+  if (enableBtn) {
+    enableBtn.addEventListener("click", handleEnableOTP);
+  }
+  
+  // Disable OTP button
+  const disableBtn = document.getElementById("disable-otp-btn");
+  if (disableBtn) {
+    disableBtn.addEventListener("click", handleDisableOTP);
+  }
+  
+  // View backup codes button
+  const viewBtn = document.getElementById("view-backup-codes-btn");
+  if (viewBtn) {
+    viewBtn.addEventListener("click", handleViewBackupCodes);
+  }
+  
+  // Regenerate backup codes button
+  const regenBtn = document.getElementById("regenerate-backup-codes-btn");
+  if (regenBtn) {
+    regenBtn.addEventListener("click", handleRegenerateBackupCodes);
+  }
+  
+  // Start OTP code display if enabled
+  if (state.decryptedData?.settings?.otpEnabled) {
+    startOTPDisplay();
+  }
+}
+
+/**
+ * Handle enabling OTP
+ */
+function handleEnableOTP() {
+  const secret = generateTOTPSecret();
+  const backupCodes = generateBackupCodes();
+  const qrData = generateTOTPQRCode(secret, 'Vault', state.decryptedData.user?.email || 'User');
+  
+  // Show setup modal
+  showOTPSetupModal(secret, backupCodes, qrData);
+}
+
+/**
+ * Handle disabling OTP
+ */
+function handleDisableOTP() {
+  if (confirm('Are you sure you want to disable two-factor authentication? This will make your vault less secure.')) {
+    // Remove OTP settings
+    if (state.decryptedData.settings) {
+      delete state.decryptedData.settings.otpEnabled;
+      delete state.decryptedData.settings.otpSecret;
+      delete state.decryptedData.settings.backupCodes;
+      
+      saveData();
+      
+      // Refresh the profile section
+      renderProfileSettings();
+      
+      showToast('Two-factor authentication disabled', 'warning');
+    }
+  }
+}
+
+/**
+ * Handle viewing backup codes
+ */
+function handleViewBackupCodes() {
+  const backupCodes = state.decryptedData?.settings?.backupCodes || [];
+  showBackupCodesModal(backupCodes);
+}
+
+/**
+ * Handle regenerating backup codes
+ */
+function handleRegenerateBackupCodes() {
+  if (confirm('Generate new backup codes? Your old codes will stop working.')) {
+    const newBackupCodes = generateBackupCodes();
+    
+    if (state.decryptedData.settings) {
+      state.decryptedData.settings.backupCodes = newBackupCodes;
+      saveData();
+      
+      // Refresh the profile section
+      renderProfileSettings();
+      
+      showBackupCodesModal(newBackupCodes, true);
+      showToast('New backup codes generated', 'success');
+    }
+  }
+}
+
+/**
+ * Show OTP setup modal
+ */
+function showOTPSetupModal(secret, backupCodes, qrData) {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-2xl font-bold">Set up Two-Factor Authentication</h3>
+        <button id="close-otp-setup" class="text-gray-400 hover:text-gray-600">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="space-y-6">
+        <div class="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <h4 class="font-semibold mb-2">Step 1: Scan QR Code</h4>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            Use Google Authenticator, Authy, or any TOTP app to scan this code:
+          </p>
+          <div class="bg-white p-4 rounded-lg inline-block">
+            ${qrData.qrCodeDataUrl ? 
+              `<img src="${qrData.qrCodeDataUrl}" alt="QR Code for 2FA Setup" class="mx-auto" style="max-width: 256px;">` :
+              qrData.fallbackInstructions || 
+              `<div class="text-xs text-gray-500 mb-2">QR Code generation failed</div>
+               <div class="text-xs text-gray-500">Copy this URL to a QR code generator:</div>
+               <div class="mt-2 p-2 bg-gray-100 rounded text-xs font-mono break-all">${qrData.url}</div>`
+            }
+          </div>
+        </div>
+        
+        <div class="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <h4 class="font-semibold mb-2">Step 2: Manual Entry (Alternative)</h4>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            Or manually enter this secret in your authenticator app:
+          </p>
+          <div class="font-mono text-lg bg-white dark:bg-gray-600 p-3 rounded border">
+            ${qrData.manualEntry}
+          </div>
+        </div>
+        
+        <div class="p-6 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+          <h4 class="font-semibold mb-2 text-yellow-800 dark:text-yellow-200">Backup Codes</h4>
+          <p class="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
+            Save these codes in a safe place. You can use them to access your vault if you lose your phone:
+          </p>
+          <div class="grid grid-cols-2 gap-2 font-mono text-sm">
+            ${backupCodes.map(code => `<div class="bg-white dark:bg-gray-600 p-2 rounded text-center">${code}</div>`).join('')}
+          </div>
+        </div>
+        
+        <div class="p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
+          <h4 class="font-semibold mb-2">Step 3: Verify Setup</h4>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
+            Enter the 6-digit code from your authenticator app:
+          </p>
+          <div class="flex gap-3">
+            <input type="text" id="verify-otp-setup" maxlength="6" placeholder="000000" 
+                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none text-center font-mono text-lg">
+            <button id="verify-otp-setup-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+              Verify & Enable
+            </button>
+          </div>
+          <div id="otp-setup-error" class="text-red-500 text-sm mt-2 hidden"></div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Event handlers
+  const closeBtn = modal.querySelector('#close-otp-setup');
+  const verifyInput = modal.querySelector('#verify-otp-setup');
+  const verifyBtn = modal.querySelector('#verify-otp-setup-btn');
+  const errorDiv = modal.querySelector('#otp-setup-error');
+  
+  const closeModal = () => {
+    modal.remove();
+  };
+  
+  closeBtn.addEventListener('click', closeModal);
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+  
+  // Auto-format input and hide errors
+  verifyInput.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/\D/g, '');
+    errorDiv.classList.add('hidden'); // Hide error when user types
+  });
+  
+  // Handle Enter key
+  verifyInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      verifyBtn.click();
+    }
+  });
+  
+  // Verify setup function
+  const verifySetup = () => {
+    const code = verifyInput.value.trim();
+    
+    // Clear previous errors
+    errorDiv.classList.add('hidden');
+    
+    if (code.length !== 6) {
+      errorDiv.textContent = 'Please enter a 6-digit code';
+      errorDiv.classList.remove('hidden');
+      verifyInput.focus();
+      return;
+    }
+    
+    // Disable button during verification
+    verifyBtn.disabled = true;
+    verifyBtn.textContent = 'Verifying...';
+    
+    try {
+      if (verifyTOTP(secret, code)) {
+        // Save OTP settings
+        if (!state.decryptedData.settings) {
+          state.decryptedData.settings = {};
+        }
+        
+        state.decryptedData.settings.otpEnabled = true;
+        state.decryptedData.settings.otpSecret = secret;
+        state.decryptedData.settings.backupCodes = backupCodes;
+        
+        saveData();
+        closeModal();
+        
+        // Refresh the profile section
+        renderProfileSettings();
+        
+        showToast('Two-factor authentication enabled successfully!', 'success');
+      } else {
+        errorDiv.textContent = 'Invalid code. Please check your authenticator app and try again.';
+        errorDiv.classList.remove('hidden');
+        verifyInput.value = '';
+        verifyInput.focus();
+      }
+    } catch (error) {
+      console.error('OTP verification error:', error);
+      errorDiv.textContent = 'Verification failed. Please try again.';
+      errorDiv.classList.remove('hidden');
+    } finally {
+      // Re-enable button
+      verifyBtn.disabled = false;
+      verifyBtn.textContent = 'Verify & Enable';
+    }
+  };
+  
+  // Verify setup button click
+  verifyBtn.addEventListener('click', verifySetup);
+  
+  verifyInput.focus();
+}
+
+/**
+ * Show backup codes modal
+ */
+function showBackupCodesModal(backupCodes, isNew = false) {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg mx-4 p-6">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-xl font-bold">${isNew ? 'New ' : ''}Backup Codes</h3>
+        <button id="close-backup-codes" class="text-gray-400 hover:text-gray-600">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      
+      <div class="space-y-4">
+        <div class="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+          <p class="text-sm text-yellow-700 dark:text-yellow-300">
+            ${isNew ? 'Your old backup codes no longer work. ' : ''}Save these codes in a safe place. Each can only be used once.
+          </p>
+        </div>
+        
+        <div class="grid grid-cols-2 gap-3">
+          ${backupCodes.map((code, index) => `
+            <div class="bg-gray-50 dark:bg-gray-700 p-3 rounded text-center">
+              <div class="text-xs text-gray-500 dark:text-gray-400">${index + 1}</div>
+              <div class="font-mono text-lg">${code}</div>
+            </div>
+          `).join('')}
+        </div>
+        
+        <div class="flex gap-3">
+          <button id="copy-backup-codes" class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+            Copy All
+          </button>
+          <button id="close-backup-codes-btn" class="flex-1 px-4 py-2 bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+  
+  // Event handlers
+  const closeBtn = modal.querySelector('#close-backup-codes');
+  const closeBtn2 = modal.querySelector('#close-backup-codes-btn');
+  const copyBtn = modal.querySelector('#copy-backup-codes');
+  
+  const closeModal = () => {
+    modal.remove();
+  };
+  
+  [closeBtn, closeBtn2].forEach(btn => btn.addEventListener('click', closeModal));
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+  
+  copyBtn.addEventListener('click', () => {
+    const codesText = backupCodes.join('\n');
+    navigator.clipboard?.writeText(codesText).then(() => {
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        copyBtn.textContent = 'Copy All';
+      }, 2000);
+    }).catch(() => {
+      // Fallback for older browsers
+      const textarea = document.createElement('textarea');
+      textarea.value = codesText;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      copyBtn.textContent = 'Copied!';
+      setTimeout(() => {
+        copyBtn.textContent = 'Copy All';
+      }, 2000);
+    });
+  });
+}
+
+/**
+ * Start displaying current OTP code
+ */
+function startOTPDisplay() {
+  const codeElement = document.getElementById('current-otp-code');
+  if (!codeElement) return;
+  
+  const secret = state.decryptedData?.settings?.otpSecret;
+  if (!secret) return;
+  
+  const updateCode = () => {
+    const currentTime = Math.floor(Date.now() / 1000);
+    const timeStep = Math.floor(currentTime / 30);
+    const secondsRemaining = 30 - (currentTime % 30);
+    
+    const code = generateTOTP(secret);
+    if (code && codeElement) {
+      codeElement.textContent = code;
+    }
+    
+    // Update countdown timer
+    const countdownElement = document.getElementById('countdown-timer');
+    if (countdownElement) {
+      countdownElement.textContent = `Expires in ${secondsRemaining}s`;
+    }
+    
+    // Update debug info if enabled
+    if (window.debugTOTP) {
+      const debugElement = document.getElementById('totp-debug');
+      const secretElement = document.getElementById('debug-secret');
+      const timestepElement = document.getElementById('debug-timestep');
+      const timeElement = document.getElementById('debug-time');
+      
+      if (debugElement) debugElement.classList.remove('hidden');
+      if (secretElement) secretElement.textContent = secret.substring(0, 8) + '...';
+      if (timestepElement) timestepElement.textContent = timeStep;
+      if (timeElement) timeElement.textContent = currentTime;
+    } else {
+      const debugElement = document.getElementById('totp-debug');
+      if (debugElement) debugElement.classList.add('hidden');
+    }
+  };
+  
+  // Update immediately
+  updateCode();
+  
+  // Update every second for countdown timer
+  const interval = setInterval(() => {
+    if (document.getElementById('current-otp-code')) {
+      updateCode();
+    } else {
+      clearInterval(interval);
+    }
+  }, 1000);
 }
 
 /**
