@@ -6115,9 +6115,25 @@ function showOTPVerificationStep(password, decryptedData) {
       handleOTPVerification();
     });
     
+    // Add Enter key support for OTP input
+    domElements.otpCode?.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleOTPVerification();
+      }
+    });
+    
     domElements.verifyBackupCodeButton?.addEventListener("click", (e) => {
       e.preventDefault();
       handleBackupCodeVerification();
+    });
+    
+    // Add Enter key support for backup code input
+    domElements.backupCode?.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleBackupCodeVerification();
+      }
     });
     
     window.otpListenersAdded = true;
@@ -6201,6 +6217,49 @@ function showOTPError(message) {
       <span>${message}</span>
     </div>
   `;
+
+  // Add shake animation and red error styling to OTP elements
+  const otpContainer = document.getElementById("otp-container");
+  const otpInput = domElements.otpCode;
+  const lockIcon = document.querySelector("#lock-screen svg");
+  const lockedBanner = document.getElementById("inactivity-banner");
+  const otpIcon = document.getElementById("otp-icon");
+  const verifyButton = domElements.verifyOtpButton;
+
+  // Shake only the input field
+  if (otpInput) otpInput.classList.add("shake", "error-state");
+  // Add error styling to other elements (no shake)
+  if (lockIcon) lockIcon.classList.add("error-red");
+  if (lockedBanner) lockedBanner.classList.add("error-red");
+  if (otpIcon) otpIcon.classList.add("error-red");
+  if (verifyButton) {
+    // Set button style directly via JavaScript - match lock icon red exactly
+    const isDark = document.documentElement.classList.contains("dark");
+    const redColor = isDark ? "#f87171" : "#ef4444";
+    verifyButton.style.backgroundColor = redColor;
+    verifyButton.style.color = "white";
+    verifyButton.style.border = "none";
+    verifyButton.style.boxShadow = "none";
+  }
+
+  // Remove animations and error styling after animation completes
+  setTimeout(() => {
+    if (otpInput) otpInput.classList.remove("shake", "error-state");
+    if (lockIcon) lockIcon.classList.remove("error-red");
+    if (lockedBanner) lockedBanner.classList.remove("error-red");
+    if (otpIcon) {
+      otpIcon.classList.remove("error-red");
+      // Restore original color class
+      otpIcon.classList.add("text-primary-500");
+    }
+    if (verifyButton) {
+      // Clear inline styles to restore original styling
+      verifyButton.style.backgroundColor = "";
+      verifyButton.style.color = "";
+      verifyButton.style.border = "";
+      verifyButton.style.boxShadow = "";
+    }
+  }, 800); // Match shake animation duration
   
   // Auto-clear error after 3 seconds
   setTimeout(() => {
@@ -7210,6 +7269,7 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
       20%, 40%, 60%, 80% { transform: translateX(4px); }
     }
     
+    
     #verify-otp-setup.shake {
       animation: otpShake 0.8s ease-in-out;
     }
@@ -7306,6 +7366,54 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
     
     .dark .backup-codes-section.error-red svg {
       color: #f87171 !important;
+    }
+
+    /* Verify OTP button error state - red background with white text */
+    #verify-otp-button.error-red {
+      background: #ef4444 !important;
+      background-color: #ef4444 !important;
+      background-image: none !important;
+      border: 2px solid #dc2626 !important;
+      box-shadow: 0 0 0 2px #dc2626 !important;
+    }
+    
+    #verify-otp-button.error-red, 
+    #verify-otp-button.error-red * {
+      color: white !important;
+    }
+
+    .dark #verify-otp-button.error-red {
+      background: #f87171 !important;
+      background-color: #f87171 !important;
+      background-image: none !important;
+      border: 2px solid #ef4444 !important;
+      box-shadow: 0 0 0 2px #ef4444 !important;
+    }
+    
+    .dark #verify-otp-button.error-red,
+    .dark #verify-otp-button.error-red * {
+      color: white !important;
+    }
+
+    /* Inactivity banner error states */
+    #inactivity-banner {
+      transition: all 0.2s ease;
+    }
+    
+    #inactivity-banner.error-red {
+      background-color: rgba(239, 68, 68, 0.12) !important;
+      border-color: rgba(239, 68, 68, 0.35) !important;
+      color: #dc2626 !important;
+    }
+    
+    .dark #inactivity-banner.error-red {
+      background-color: rgba(248, 113, 113, 0.2) !important;
+      border-color: #f87171 !important;
+      color: #ffffff !important;
+    }
+    
+    #inactivity-banner.shake {
+      animation: otpShake 0.8s ease-in-out;
     }
   `;
   document.head.appendChild(style);
