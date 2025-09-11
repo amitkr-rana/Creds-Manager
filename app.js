@@ -3693,12 +3693,12 @@ function renderProfileSettings() {
           <!-- Two-Factor Authentication (OTP) -->
           <div class="space-y-4 p-6 bg-gray-50 dark:bg-gray-800 rounded-lg" id="otp-section">
             <div class="flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-600 dark:text-green-400">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary-600 dark:text-primary-400">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                 <circle cx="12" cy="16" r="1"/>
               </svg>
-              <h3 class="text-lg font-semibold">Two-Factor Authentication (2FA)</h3>
+              <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">Two-Factor Authentication (2FA)</h3>
             </div>
             <p class="text-xs text-gray-600 dark:text-gray-400">Add an extra layer of security with time-based one-time passwords (TOTP).</p>
             
@@ -3722,7 +3722,7 @@ function renderProfileSettings() {
                         </svg>
                       </div>
                       <p class="text-gray-600 dark:text-gray-400 mb-4">Two-factor authentication is not enabled</p>
-                      <button type="button" id="enable-otp-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500">
+                      <button type="button" id="enable-otp-btn" class="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
                         Enable 2FA
                       </button>
                     </div>
@@ -5468,10 +5468,7 @@ function setupEventListeners() {
     const value = e.target.value.replace(/\D/g, ''); // Only digits
     e.target.value = value;
     
-    // Auto-submit when 6 digits are entered
-    if (value.length === 6) {
-      domElements.verifyOtpButton?.click();
-    }
+    // Don't auto-submit - user must click verify button or press Enter
   });
 
   // Auto-format backup code input
@@ -5479,10 +5476,7 @@ function setupEventListeners() {
     const value = e.target.value.replace(/\D/g, ''); // Only digits
     e.target.value = value;
     
-    // Auto-submit when 8 digits are entered
-    if (value.length === 8) {
-      domElements.verifyBackupCodeButton?.click();
-    }
+    // Don't auto-submit - user must click verify button or press Enter
   });
 
   // Lock button
@@ -7012,6 +7006,14 @@ function closeAllModals() {
     "#import-export-modal .border-dashed svg"
   );
   if (uploadIcon) uploadIcon.classList.remove("error-red");
+
+  // Close any dynamically created modals (like OTP setup modal)
+  const dynamicModals = document.querySelectorAll('.fixed.inset-0.bg-black\\/60.z-50');
+  dynamicModals.forEach(modal => {
+    if (modal.parentNode) {
+      modal.remove();
+    }
+  });
 }
 
 // ========================================
@@ -7120,15 +7122,15 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 bg-black/60 flex items-center justify-center z-50';
   modal.innerHTML = `
-    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
-      <div class="flex items-center justify-between mb-6">
-        <h3 class="text-2xl font-bold">Set up Two-Factor Authentication</h3>
-        <button id="close-otp-setup" class="text-gray-400 hover:text-gray-600">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
+    <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto otp-setup-modal">
+      <div class="mb-6">
+        <div class="flex items-center gap-3">
+          <svg id="otp-setup-title-icon" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary-600 dark:text-primary-400">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>
+            <path d="M8 11l2 2 4-4"/>
           </svg>
-        </button>
+          <h3 class="text-2xl font-bold">Set up Two-Factor Authentication</h3>
+        </div>
       </div>
       
       <div class="space-y-6">
@@ -7148,39 +7150,45 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
           </div>
         </div>
         
-        <div class="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
-          <h4 class="font-semibold mb-2">Step 2: Manual Entry (Alternative)</h4>
-          <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-            Or manually enter this secret in your authenticator app:
-          </p>
-          <div class="font-mono text-lg bg-white dark:bg-gray-600 p-3 rounded border">
-            ${qrData.manualEntry}
+        <div class="p-6 bg-primary-50 dark:bg-primary-900/20 rounded-lg backup-codes-section">
+          <div class="flex items-center justify-between mb-2">
+            <h4 class="font-semibold text-primary-700 dark:text-primary-300">Backup Codes</h4>
+            <svg id="download-backup-codes-btn" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary-600 dark:text-primary-400 cursor-pointer hover:text-primary-700 dark:hover:text-primary-300 transition-colors"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
           </div>
-        </div>
-        
-        <div class="p-6 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
-          <h4 class="font-semibold mb-2 text-yellow-800 dark:text-yellow-200">Backup Codes</h4>
-          <p class="text-sm text-yellow-700 dark:text-yellow-300 mb-3">
+          <p class="text-sm text-primary-700 dark:text-primary-300 mb-3">
             Save these codes in a safe place. You can use them to access your vault if you lose your phone:
           </p>
           <div class="grid grid-cols-2 gap-2 font-mono text-sm">
-            ${backupCodes.map(code => `<div class="bg-white dark:bg-gray-600 p-2 rounded text-center">${code}</div>`).join('')}
+            ${backupCodes.map(code => `<div class="bg-white dark:bg-primary-800 p-2 rounded text-center border border-primary-200 dark:border-primary-600 text-gray-900 dark:text-primary-100">${code}</div>`).join('')}
           </div>
         </div>
         
         <div class="p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
-          <h4 class="font-semibold mb-2">Step 3: Verify Setup</h4>
+          <h4 class="font-semibold mb-2 text-gray-900 dark:text-gray-100">Step 2: Verify Setup</h4>
           <p class="text-sm text-gray-600 dark:text-gray-400 mb-3">
             Enter the 6-digit code from your authenticator app:
           </p>
-          <div class="flex gap-3">
+          <div class="space-y-3">
             <input type="text" id="verify-otp-setup" maxlength="6" placeholder="000000" 
-                   class="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none text-center font-mono text-lg">
-            <button id="verify-otp-setup-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
-              Verify & Enable
-            </button>
+                   class="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none text-center font-mono text-lg">
+            <div class="flex gap-3">
+              <button id="cancel-otp-setup" class="flex-1 px-4 py-2 rounded-lg bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-300 dark:hover:bg-gray-500">Cancel</button>
+              <button id="verify-otp-setup-btn" class="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                Verify & Enable
+              </button>
+            </div>
           </div>
-          <div id="otp-setup-error" class="text-red-500 text-sm mt-2 hidden"></div>
+          <div id="otp-setup-error" class="hidden mt-3 p-3 rounded-lg border text-sm relative overflow-hidden otp-error-banner">
+            <div class="absolute inset-0 bg-gradient-to-br from-white/35 via-white/12 to-transparent pointer-events-none dark:from-white/15 dark:via-white/6"></div>
+            <div class="relative flex items-start gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="flex-shrink-0 mt-0.5">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
+              <span id="otp-setup-error-text"></span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -7188,8 +7196,159 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
   
   document.body.appendChild(modal);
   
+  // Add CSS styles for the error banner
+  const style = document.createElement('style');
+  style.textContent = `
+    .otp-error-banner {
+      background-color: rgb(from var(--primary-600) r g b / 0.12) !important;
+      border-color: rgb(from var(--primary-600) r g b / 0.35) !important;
+      color: var(--primary-700) !important;
+      backdrop-filter: saturate(120%) blur(6px) !important;
+      -webkit-backdrop-filter: saturate(120%) blur(6px) !important;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06) !important;
+      transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease !important;
+    }
+    .dark .otp-error-banner {
+      background-color: rgb(from var(--primary-700) r g b / 0.25) !important;
+      border-color: rgb(from var(--primary-600) r g b / 0.5) !important;
+      color: #ffffff !important;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.25) !important;
+    }
+    .otp-error-banner svg {
+      color: var(--primary-600);
+      transition: color 0.3s ease;
+    }
+    .dark .otp-error-banner svg {
+      color: var(--primary-400);
+    }
+    
+    /* Red error state during animation */
+    .otp-error-banner.error-red {
+      background-color: rgba(239, 68, 68, 0.12) !important;
+      border-color: rgba(239, 68, 68, 0.35) !important;
+      color: #dc2626 !important;
+    }
+    .dark .otp-error-banner.error-red {
+      background-color: rgba(248, 113, 113, 0.2) !important;
+      border-color: #f87171 !important;
+      color: #ffffff !important;
+    }
+    .otp-error-banner.error-red svg {
+      color: #dc2626 !important;
+    }
+    .dark .otp-error-banner.error-red svg {
+      color: #f87171 !important;
+    }
+    
+    /* Shake animation for OTP input */
+    @keyframes otpShake {
+      0%, 100% { transform: translateX(0); }
+      10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+      20%, 40%, 60%, 80% { transform: translateX(4px); }
+    }
+    
+    #verify-otp-setup.shake {
+      animation: otpShake 0.8s ease-in-out;
+    }
+    
+    /* Verify & Enable button transitions */
+    #verify-otp-setup-btn {
+      transition: background-color 0.3s ease, border-color 0.3s ease !important;
+    }
+    
+    /* Red error state for button during animation */
+    #verify-otp-setup-btn.error-red {
+      background-color: #ef4444 !important;
+      border-color: #dc2626 !important;
+      color: #ffffff !important;
+    }
+    
+    .dark #verify-otp-setup-btn.error-red {
+      background-color: #f87171 !important;
+      border-color: #ef4444 !important;
+      color: #ffffff !important;
+    }
+    
+    /* Shake animation for button */
+    #verify-otp-setup-btn.shake {
+      animation: otpShake 0.8s ease-in-out;
+    }
+    
+    /* Title icon transitions */
+    #otp-setup-title-icon {
+      transition: color 0.3s ease;
+    }
+    
+    /* Red error state for title icon during animation */
+    #otp-setup-title-icon.error-red {
+      color: #dc2626 !important;
+    }
+    
+    .dark #otp-setup-title-icon.error-red {
+      color: #f87171 !important;
+    }
+    
+    /* Hide all scrollbars on OTP setup modal */
+    .otp-setup-modal {
+      overflow-x: hidden !important;
+      overflow-y: hidden !important;
+      scrollbar-width: none !important; /* Firefox */
+      -ms-overflow-style: none !important; /* Internet Explorer 10+ */
+    }
+    
+    .otp-setup-modal::-webkit-scrollbar {
+      width: 0px !important;
+      height: 0px !important;
+      background: transparent !important; /* Chrome/Safari/Webkit */
+    }
+    
+    /* Backup codes section shake animation and transitions */
+    .backup-codes-section {
+      transition: background-color 0.3s ease, border-color 0.3s ease !important;
+    }
+    
+    .backup-codes-section.shake {
+      animation: otpShake 0.8s ease-in-out;
+    }
+    
+    .backup-codes-section.error-red {
+      background-color: rgba(239, 68, 68, 0.12) !important;
+      border-color: rgba(239, 68, 68, 0.35) !important;
+    }
+    
+    .dark .backup-codes-section.error-red {
+      background-color: rgba(248, 113, 113, 0.2) !important;
+      border-color: #f87171 !important;
+    }
+    
+    .backup-codes-section.error-red h4 {
+      color: #dc2626 !important;
+    }
+    
+    .dark .backup-codes-section.error-red h4 {
+      color: #ffffff !important;
+    }
+    
+    .backup-codes-section.error-red p {
+      color: #b91c1c !important;
+    }
+    
+    .dark .backup-codes-section.error-red p {
+      color: #fca5a5 !important;
+    }
+    
+    .backup-codes-section.error-red svg {
+      color: #dc2626 !important;
+    }
+    
+    .dark .backup-codes-section.error-red svg {
+      color: #f87171 !important;
+    }
+  `;
+  document.head.appendChild(style);
+  
   // Event handlers
-  const closeBtn = modal.querySelector('#close-otp-setup');
+  const cancelBtn = modal.querySelector('#cancel-otp-setup');
   const verifyInput = modal.querySelector('#verify-otp-setup');
   const verifyBtn = modal.querySelector('#verify-otp-setup-btn');
   const errorDiv = modal.querySelector('#otp-setup-error');
@@ -7198,7 +7357,7 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
     modal.remove();
   };
   
-  closeBtn.addEventListener('click', closeModal);
+  cancelBtn.addEventListener('click', closeModal);
   modal.addEventListener('click', (e) => {
     if (e.target === modal) closeModal();
   });
@@ -7225,8 +7384,28 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
     errorDiv.classList.add('hidden');
     
     if (code.length !== 6) {
-      errorDiv.textContent = 'Please enter a 6-digit code';
+      const errorText = modal.querySelector('#otp-setup-error-text');
+      const titleIcon = modal.querySelector('#otp-setup-title-icon');
+      const backupCodesSection = modal.querySelector('.backup-codes-section');
+      errorText.textContent = 'Please enter a 6-digit code';
+      
+      // Add shake animation and error styling
+      verifyInput.classList.add('shake', 'error-state');
+      verifyBtn.classList.add('shake', 'error-red');
+      backupCodesSection.classList.add('shake', 'error-red');
+      titleIcon.classList.add('error-red');
+      errorDiv.classList.add('error-red');
       errorDiv.classList.remove('hidden');
+      
+      // Remove animations and red styling after animation completes
+      setTimeout(() => {
+        verifyInput.classList.remove('shake', 'error-state');
+        verifyBtn.classList.remove('shake', 'error-red');
+        backupCodesSection.classList.remove('shake', 'error-red');
+        titleIcon.classList.remove('error-red');
+        errorDiv.classList.remove('error-red');
+      }, 800);
+      
       verifyInput.focus();
       return;
     }
@@ -7254,15 +7433,54 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
         
         showToast('Two-factor authentication enabled successfully!', 'success');
       } else {
-        errorDiv.textContent = 'Invalid code. Please check your authenticator app and try again.';
+        const errorText = modal.querySelector('#otp-setup-error-text');
+        const titleIcon = modal.querySelector('#otp-setup-title-icon');
+        const backupCodesSection = modal.querySelector('.backup-codes-section');
+        errorText.textContent = 'Invalid code. Please check your authenticator app and try again.';
+        
+        // Add shake animation and error styling
+        verifyInput.classList.add('shake', 'error-state');
+        verifyBtn.classList.add('shake', 'error-red');
+        backupCodesSection.classList.add('shake', 'error-red');
+        titleIcon.classList.add('error-red');
+        errorDiv.classList.add('error-red');
         errorDiv.classList.remove('hidden');
+        
+        // Remove animations and red styling after animation completes
+        setTimeout(() => {
+          verifyInput.classList.remove('shake', 'error-state');
+          verifyBtn.classList.remove('shake', 'error-red');
+          backupCodesSection.classList.remove('shake', 'error-red');
+          titleIcon.classList.remove('error-red');
+          errorDiv.classList.remove('error-red');
+        }, 800);
+        
         verifyInput.value = '';
         verifyInput.focus();
       }
     } catch (error) {
       console.error('OTP verification error:', error);
-      errorDiv.textContent = 'Verification failed. Please try again.';
+      const errorText = modal.querySelector('#otp-setup-error-text');
+      const titleIcon = modal.querySelector('#otp-setup-title-icon');
+      const backupCodesSection = modal.querySelector('.backup-codes-section');
+      errorText.textContent = 'Verification failed. Please try again.';
+      
+      // Add shake animation and error styling
+      verifyInput.classList.add('shake', 'error-state');
+      verifyBtn.classList.add('shake', 'error-red');
+      backupCodesSection.classList.add('shake', 'error-red');
+      titleIcon.classList.add('error-red');
+      errorDiv.classList.add('error-red');
       errorDiv.classList.remove('hidden');
+      
+      // Remove animations and red styling after animation completes
+      setTimeout(() => {
+        verifyInput.classList.remove('shake', 'error-state');
+        verifyBtn.classList.remove('shake', 'error-red');
+        backupCodesSection.classList.remove('shake', 'error-red');
+        titleIcon.classList.remove('error-red');
+        errorDiv.classList.remove('error-red');
+      }, 800);
     } finally {
       // Re-enable button
       verifyBtn.disabled = false;
@@ -7273,7 +7491,48 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
   // Verify setup button click
   verifyBtn.addEventListener('click', verifySetup);
   
-  verifyInput.focus();
+  // Download backup codes button click
+  const downloadBtn = modal.querySelector('#download-backup-codes-btn');
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', () => {
+      // Create backup codes data
+      const backupData = {
+        timestamp: new Date().toISOString(),
+        backupCodes: backupCodes,
+        note: "These are your backup codes for two-factor authentication. Keep them safe and secure."
+      };
+      
+      // Create downloadable content
+      const content = `Backup Codes for Vault - Generated on ${new Date().toLocaleString()}
+
+IMPORTANT: Keep these codes safe and secure!
+Each code can only be used once.
+
+Backup Codes:
+${backupCodes.map((code, index) => `${(index + 1).toString().padStart(2, '0')}. ${code}`).join('\n')}
+
+Note: If you lose access to your authenticator app, you can use any of these codes to regain access to your vault. After using a code, it will no longer be valid.`;
+      
+      // Create and trigger download
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `vault-backup-codes-${new Date().toISOString().split('T')[0]}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      // Show success toast
+      showToast('Backup codes downloaded successfully', 'success');
+    });
+  }
+  
+  // Set focus on the verification input after modal is rendered
+  setTimeout(() => {
+    verifyInput.focus();
+  }, 100);
 }
 
 /**

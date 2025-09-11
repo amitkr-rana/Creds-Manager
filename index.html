@@ -69,6 +69,11 @@
             Unlock
           </button>
         </div>
+        <div id="auth-mode-toggle" class="text-center hidden">
+          <button type="button" id="use-authenticator-link" class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline transition-colors">
+            Use Authenticator instead
+          </button>
+        </div>
         <div id="confirm-password-container" class="relative hidden">
           <input id="confirm-master-password" type="password" class="w-full px-4 py-3 pr-16 text-gray-900 bg-gray-100 dark:bg-gray-700 dark:text-white border-2 border-transparent rounded-lg focus:ring-2 focus:ring-primary-500 focus:outline-none" placeholder="Confirm Master Password">
           <button type="submit" id="create-vault-button" class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200 text-sm">
@@ -87,8 +92,9 @@
           <button type="submit" id="verify-otp-button" class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200 text-sm">
             Verify
           </button>
-          <div class="text-center mt-3">
-            <button type="button" id="use-backup-code-btn" class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline">Use backup code instead</button>
+          <div class="text-center mt-3 space-y-2">
+            <button type="button" id="use-backup-code-btn" class="block text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline">Use backup code instead</button>
+            <button type="button" id="use-password-link" class="block text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline transition-colors">Use Password instead</button>
           </div>
         </div>
         <div id="backup-code-container" class="relative hidden">
