@@ -3730,60 +3730,23 @@ function renderProfileSettings() {
                 } else {
                   return `
                     <div class="space-y-4">
-                      <div class="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
-                        <div class="flex items-center gap-2">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-green-600">
-                            <path d="M9 12l2 2 4-4"/>
-                            <path d="M21 12c0-2.21-1.79-4-4-4s-4 1.79-4 4 1.79 4 4 4 4-1.79 4-4z"/>
+                      <div class="flex items-center justify-between gap-4">
+                        <div class="flex items-center gap-2 p-3 rounded-lg flex-1 otp-enabled-status" style="background: linear-gradient(135deg, #10b981 0%, #10b981 40%, var(--primary-600) 100%); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.05); overflow: hidden;">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white drop-shadow-sm">
+                            <polyline points="20,6 9,17 4,12"></polyline>
                           </svg>
-                          <span class="text-sm font-medium text-green-800 dark:text-green-200">2FA is enabled</span>
+                          <span class="text-sm font-medium text-white drop-shadow-sm">Two-Factor Authentication is enabled</span>
                         </div>
-                        <button type="button" id="disable-otp-btn" class="text-sm text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">
-                          Disable
+                        
+                        <button type="button" id="disable-otp-btn" class="flex items-center gap-2 px-3 py-3 text-sm font-medium rounded-lg transition-all duration-200 h-full" style="background-color: var(--primary-600); color: white; border: 1px solid var(--primary-700);" onmouseover="this.style.backgroundColor='var(--primary-700)'" onmouseout="this.style.backgroundColor='var(--primary-600)'">
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18"></line>
+                            <line x1="6" y1="6" x2="18" y2="18"></line>
+                          </svg>
+                          Disable 2FA
                         </button>
                       </div>
                       
-                      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                          <h4 class="text-sm font-medium mb-2">Current Code</h4>
-                          <div class="p-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-center">
-                            <div id="current-otp-code" class="text-2xl font-mono tracking-wider text-primary-600 dark:text-primary-400">------</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              Refreshes every 30 seconds
-                            </div>
-                            <div id="countdown-timer" class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                              --
-                            </div>
-                          </div>
-                          <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                            <button onclick="window.debugTOTP = !window.debugTOTP; setupOTPEventHandlers();" class="underline">
-                              Toggle Debug Mode
-                            </button>
-                          </div>
-                          <div id="totp-debug" class="mt-2 text-xs text-gray-600 dark:text-gray-400 hidden">
-                            <div>Secret: <span id="debug-secret">--</span></div>
-                            <div>Time Step: <span id="debug-timestep">--</span></div>
-                            <div>Unix Time: <span id="debug-time">--</span></div>
-                          </div>
-                        </div>
-                        
-                        <div>
-                          <h4 class="text-sm font-medium mb-2">Backup Codes</h4>
-                          <div class="p-3 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg">
-                            <div class="text-sm text-gray-600 dark:text-gray-400">
-                              ${backupCodes.length} codes remaining
-                            </div>
-                            <div class="flex gap-2 mt-2">
-                              <button type="button" id="view-backup-codes-btn" class="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-600 rounded hover:bg-gray-200 dark:hover:bg-gray-500">
-                                View
-                              </button>
-                              <button type="button" id="regenerate-backup-codes-btn" class="text-xs px-2 py-1 bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200 rounded hover:bg-yellow-200 dark:hover:bg-yellow-900/50">
-                                Regenerate
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   `;
                 }
