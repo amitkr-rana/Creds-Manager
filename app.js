@@ -1296,6 +1296,83 @@ function generateTOTPSecret() {
 }
 
 /**
+ * Generate device-specific encryption key for 2FA-only storage
+ */
+async function generateDeviceKey() {
+  // Create device fingerprint using available browser/device info
+  const deviceInfo = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width,
+    screen.height,
+    new Date().getTimezoneOffset(),
+    'vault-2fa-device-key' // Fixed salt
+  ].join('|');
+  
+  // Create hash of device info
+  const encoder = new TextEncoder();
+  const data = encoder.encode(deviceInfo);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  
+  // Import as key for encryption
+  return crypto.subtle.importKey(
+    'raw',
+    hashBuffer.slice(0, 32), // Use first 32 bytes
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+/**
+ * Encrypt OTP secret for device-specific storage
+ */
+async function encryptOTPForDevice(otpSecret) {
+  const deviceKey = await generateDeviceKey();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(otpSecret);
+  
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv },
+    deviceKey,
+    data
+  );
+  
+  // Combine IV and encrypted data
+  const result = new Uint8Array(iv.length + encrypted.byteLength);
+  result.set(iv);
+  result.set(new Uint8Array(encrypted), iv.length);
+  
+  return btoa(String.fromCharCode(...result));
+}
+
+/**
+ * Decrypt OTP secret from device-specific storage
+ */
+async function decryptOTPFromDevice(encryptedData) {
+  try {
+    const deviceKey = await generateDeviceKey();
+    const data = new Uint8Array([...atob(encryptedData)].map(c => c.charCodeAt(0)));
+    
+    const iv = data.slice(0, 12);
+    const encrypted = data.slice(12);
+    
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: iv },
+      deviceKey,
+      encrypted
+    );
+    
+    const decoder = new TextDecoder();
+    return decoder.decode(decrypted);
+  } catch (error) {
+    console.error('Failed to decrypt OTP secret:', error);
+    return null;
+  }
+}
+
+/**
  * Generate TOTP token using HMAC-SHA1
  */
 function generateTOTP(secret, timeStep = 30, digits = 6) {
@@ -2819,6 +2896,14 @@ function setupLockScreen() {
     domElements.createVaultButton.style.display = "none";
     if (forgotPasswordContainer) {
       forgotPasswordContainer.style.display = "block";
+    }
+
+    // Check if 2FA is enabled and show auth mode toggle
+    // Show the toggle if we have device-stored 2FA credentials
+    const authModeToggle = document.getElementById("auth-mode-toggle");
+    const hasDeviceOTPSecret = localStorage.getItem("vaultOTPSecret");
+    if (authModeToggle && hasDeviceOTPSecret) {
+      authModeToggle.style.display = "block";
     }
 
     if (userNameInput) {
@@ -5413,6 +5498,12 @@ function setupEventListeners() {
     domElements.forgotPasswordModal.style.display = "block";
   });
 
+  // Use authenticator link - switch to 2FA mode
+  document.getElementById("use-authenticator-link")?.addEventListener("click", (e) => {
+    e.preventDefault();
+    switchToTwoFactorMode();
+  });
+
   // OTP verification events
   domElements.useBackupCodeBtn?.addEventListener("click", () => {
     domElements.otpContainer.style.display = "none";
@@ -5770,16 +5861,8 @@ function handleMasterPasswordSubmit(e) {
     const decryptedData = loadData(password);
 
     if (decryptedData) {
-      // Check if OTP is enabled for this vault
-      const otpEnabled = decryptedData.settings?.otpEnabled === true;
-      
-      if (otpEnabled) {
-        // Show OTP verification step
-        showOTPVerificationStep(password, decryptedData);
-        return;
-      }
-      
-      // Complete login without OTP
+      // Password-only unlock - no automatic 2FA redirect
+      // Users must explicitly choose "Use 2FA instead" if they want 2FA
       completeVaultUnlock(password, decryptedData);
       
       // Update accent theme selection in profile after recovery
@@ -6083,6 +6166,121 @@ function completeVaultUnlock(password, decryptedData) {
 }
 
 /**
+ * Switch to two-factor authentication mode from password unlock screen
+ */
+function switchToTwoFactorMode() {
+  // Hide password input and show OTP input directly
+  const masterPasswordContainer = domElements.masterPassword.parentElement;
+  const authModeToggle = document.getElementById("auth-mode-toggle");
+  
+  if (masterPasswordContainer) {
+    masterPasswordContainer.style.display = "none";
+  }
+  if (authModeToggle) {
+    authModeToggle.style.display = "none";
+  }
+  
+  // Show OTP container
+  domElements.otpContainer.style.display = "block";
+  domElements.backupCodeContainer.style.display = "none";
+  
+  // Focus on OTP input
+  domElements.otpCode.value = "";
+  domElements.otpCode.focus();
+  
+  // Set flag to indicate we're in 2FA-only mode (no password verification)
+  window.twoFactorOnlyMode = true;
+  
+  // Update title and subtitle
+  domElements.lockScreenTitle.textContent = "Two-Factor Authentication";
+  domElements.lockScreenSubtitle.textContent = "Enter your authenticator code to unlock your vault.";
+  
+  // Add event listeners for 2FA-only verification (if not already added)
+  if (!window.otpListenersAdded) {
+    domElements.verifyOtpButton?.addEventListener("click", (e) => {
+      e.preventDefault();
+      handleOTPVerification();
+    });
+    
+    // Add Enter key support for OTP input
+    domElements.otpCode?.addEventListener("keypress", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        handleOTPVerification();
+      }
+    });
+    
+    window.otpListenersAdded = true;
+  }
+  
+  // Add a "Use Password instead" link above the backup code link
+  const otpContainer = domElements.otpContainer;
+  const existingLinksContainer = otpContainer.querySelector('.text-center.mt-3.space-y-2');
+  
+  let usePasswordLink = otpContainer.querySelector('.use-password-link-container');
+  if (!usePasswordLink && existingLinksContainer) {
+    usePasswordLink = document.createElement('button');
+    usePasswordLink.type = 'button';
+    usePasswordLink.className = 'use-password-link-container use-password-link-btn block text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline transition-colors';
+    usePasswordLink.textContent = 'Use Password instead';
+    
+    // Insert before the backup code button
+    const backupCodeBtn = existingLinksContainer.querySelector('#use-backup-code-btn');
+    existingLinksContainer.insertBefore(usePasswordLink, backupCodeBtn);
+    
+    // Add event listener for switching back
+    usePasswordLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      console.log('Use Password instead clicked'); // Debug log
+      switchBackToPasswordMode();
+    });
+  }
+}
+
+/**
+ * Switch back to password mode from 2FA mode
+ */
+function switchBackToPasswordMode() {
+  console.log('switchBackToPasswordMode called'); // Debug log
+  
+  // Show password input and hide OTP input
+  const masterPasswordContainer = domElements.masterPassword.parentElement;
+  const authModeToggle = document.getElementById("auth-mode-toggle");
+  
+  console.log('masterPasswordContainer:', masterPasswordContainer); // Debug
+  console.log('authModeToggle:', authModeToggle); // Debug
+  
+  if (masterPasswordContainer) {
+    masterPasswordContainer.style.display = "block";
+  }
+  if (authModeToggle) {
+    authModeToggle.style.display = "block";
+  }
+  
+  // Hide OTP containers
+  domElements.otpContainer.style.display = "none";
+  domElements.backupCodeContainer.style.display = "none";
+  
+  // Clear 2FA-only mode flag
+  window.twoFactorOnlyMode = false;
+  
+  // Restore title and subtitle
+  domElements.lockScreenTitle.textContent = "Welcome Back";
+  domElements.lockScreenSubtitle.textContent = "Enter your master password to unlock your vault.";
+  
+  // Clear any error messages
+  domElements.passwordError.innerHTML = "";
+  
+  // Focus on password input
+  domElements.masterPassword.value = "";
+  setTimeout(() => {
+    domElements.masterPassword.focus();
+  }, 100);
+  
+  console.log('switchBackToPasswordMode completed'); // Debug log
+}
+
+/**
  * Show OTP verification step after successful password verification
  */
 function showOTPVerificationStep(password, decryptedData) {
@@ -6143,12 +6341,25 @@ function showOTPVerificationStep(password, decryptedData) {
 /**
  * Handle OTP code verification
  */
-function handleOTPVerification() {
+async function handleOTPVerification() {
   const otpCode = domElements.otpCode.value.trim();
-  const { password, decryptedData } = window.tempCredentials || {};
   
   if (!otpCode || otpCode.length !== 6) {
     showOTPError("Please enter a valid 6-digit code.");
+    return;
+  }
+  
+  // Check if we're in 2FA-only mode (no password verification)
+  if (window.twoFactorOnlyMode) {
+    await handleTwoFactorOnlyVerification(otpCode);
+    return;
+  }
+  
+  // Regular flow: password already verified, OTP as second factor
+  const { password, decryptedData } = window.tempCredentials || {};
+  
+  if (!password || !decryptedData) {
+    showOTPError("Session expired. Please enter your master password first.");
     return;
   }
   
@@ -6166,6 +6377,51 @@ function handleOTPVerification() {
     showOTPError("Invalid code. Please try again.");
     domElements.otpCode.value = "";
     domElements.otpCode.focus();
+  }
+}
+
+/**
+ * Handle 2FA-only verification using device-stored OTP secret
+ */
+async function handleTwoFactorOnlyVerification(otpCode) {
+  try {
+    // Get device-encrypted OTP secret
+    const encryptedOTPSecret = localStorage.getItem('vaultOTPSecret');
+    const encryptedMasterPassword = localStorage.getItem('vaultMasterPassword');
+    
+    if (!encryptedOTPSecret || !encryptedMasterPassword) {
+      showOTPError("2FA-only access not configured. Please use password first.");
+      return;
+    }
+    
+    // Decrypt OTP secret with device key
+    const otpSecret = await decryptOTPFromDevice(encryptedOTPSecret);
+    const masterPassword = await decryptOTPFromDevice(encryptedMasterPassword);
+    
+    if (!otpSecret || !masterPassword) {
+      showOTPError("Failed to access 2FA data. Please use password instead.");
+      return;
+    }
+    
+    // Verify OTP code
+    if (verifyTOTP(otpSecret, otpCode)) {
+      // OTP verification successful, now unlock vault with stored password
+      const decryptedData = loadData(masterPassword);
+      
+      if (decryptedData) {
+        cleanupOTPStep();
+        completeVaultUnlock(masterPassword, decryptedData);
+      } else {
+        showOTPError("Failed to unlock vault. Please use password instead.");
+      }
+    } else {
+      showOTPError("Invalid code. Please try again.");
+      domElements.otpCode.value = "";
+      domElements.otpCode.focus();
+    }
+  } catch (error) {
+    console.error('2FA-only verification error:', error);
+    showOTPError("2FA verification failed. Please use password instead.");
   }
 }
 
@@ -7099,6 +7355,10 @@ function handleDisableOTP() {
       delete state.decryptedData.settings.otpSecret;
       delete state.decryptedData.settings.backupCodes;
       
+      // Remove device-stored 2FA data
+      localStorage.removeItem('vaultOTPSecret');
+      localStorage.removeItem('vaultMasterPassword');
+      
       saveData();
       
       // Refresh the profile section
@@ -7448,7 +7708,7 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
   });
   
   // Verify setup function
-  const verifySetup = () => {
+  const verifySetup = async () => {
     const code = verifyInput.value.trim();
     
     // Clear previous errors
@@ -7495,6 +7755,18 @@ function showOTPSetupModal(secret, backupCodes, qrData) {
         state.decryptedData.settings.otpEnabled = true;
         state.decryptedData.settings.otpSecret = secret;
         state.decryptedData.settings.backupCodes = backupCodes;
+        
+        // Store OTP secret separately for 2FA-only access
+        try {
+          const deviceEncryptedSecret = await encryptOTPForDevice(secret);
+          localStorage.setItem('vaultOTPSecret', deviceEncryptedSecret);
+          
+          // Also store encrypted master password for 2FA-only unlock
+          const masterPasswordHash = await encryptOTPForDevice(state.masterPassword);
+          localStorage.setItem('vaultMasterPassword', masterPasswordHash);
+        } catch (error) {
+          console.error('Failed to store 2FA-only access data:', error);
+        }
         
         saveData();
         closeModal();

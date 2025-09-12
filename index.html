@@ -94,14 +94,13 @@
           </button>
           <div class="text-center mt-3 space-y-2">
             <button type="button" id="use-backup-code-btn" class="block text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline">Use backup code instead</button>
-            <button type="button" id="use-password-link" class="block text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline transition-colors">Use Password instead</button>
           </div>
         </div>
         <div id="backup-code-container" class="relative hidden">
           <div class="text-center mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-yellow-500 mb-2">
+            <svg id="otp-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mx-auto text-primary-500 mb-2">
               <path d="M9 12l2 2 4-4"/>
-              <path d="M12 2L2 7v10l10 5 10-5V7L12 2z"/>
+              <path d="M21 12c0 1.3-1 2.3-2.3 2.3H5.3C4 14.3 3 13.3 3 12s1-2.3 2.3-2.3h13.4C20.7 9.7 21.7 10.7 21 12z"/>
             </svg>
             <p class="text-sm text-gray-600 dark:text-gray-400">Enter one of your backup recovery codes</p>
           </div>
@@ -109,8 +108,9 @@
           <button type="submit" id="verify-backup-code-button" class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 font-semibold text-white bg-primary-600 rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all duration-200 text-sm">
             Verify
           </button>
-          <div class="text-center mt-3">
-            <button type="button" id="back-to-otp-btn" class="text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline">Back to authenticator code</button>
+          <div class="text-center mt-3 space-y-2">
+            <button type="button" id="back-to-otp-btn" class="block text-sm text-gray-500 hover:text-primary-600 dark:text-gray-400 dark:hover:text-primary-400 underline-offset-2 hover:underline">Back to authenticator code</button>
+            <div class="block text-sm invisible" aria-hidden="true">&nbsp;</div>
           </div>
         </div>
         <div id="password-error" class="text-red-500 text-sm min-h-0 h-16 flex items-start"></div>
